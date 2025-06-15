@@ -86,3 +86,9 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print("Usando porta:", port)
     app.run(host="0.0.0.0", port=port)
+
+import sys
+print("Arquivos no diretório:", os.listdir())
+print("PORT:", os.environ.get("PORT"))
+sys.stdout.flush()
+
