@@ -2,6 +2,7 @@ from flask import Flask
 from bs4 import BeautifulSoup
 import os
 from datetime import datetime
+import calendar
 import re
 
 app = Flask(__name__)
@@ -27,12 +28,26 @@ def parse_data(data_str):
         return None
 
 def parse_valor(valor_str):
-    # Remove R$, espaços, nbsp, e substitui vírgula por ponto
     limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
     try:
         return float(limpo)
     except:
         return 0.0
+
+def calcular_intervalo_dias(data_com, pagamento):
+    if not data_com or not pagamento:
+        return 9999, "-"
+    
+    com_dia = data_com.day
+    pgto_dia = pagamento.day
+
+    if pgto_dia >= com_dia:
+        intervalo = pgto_dia - com_dia
+    else:
+        dias_mes_anterior = calendar.monthrange(pagamento.year, pagamento.month - 1 if pagamento.month > 1 else 12)[1]
+        intervalo = (dias_mes_anterior - com_dia) + pgto_dia
+
+    return intervalo, f"{intervalo} dias"
 
 if tabela:
     for row in tabela.find_all("tr")[1:]:
@@ -42,12 +57,7 @@ if tabela:
             pagamento = parse_data(cols[3].text)
             valor = parse_valor(cols[4].text)
 
-            if data_com and pagamento:
-                dias_entre = (pagamento - data_com).days
-                dias_entre_str = f"{dias_entre} dias"
-            else:
-                dias_entre = 9999
-                dias_entre_str = "-"
+            dias_entre, dias_entre_str = calcular_intervalo_dias(data_com, pagamento)
 
             proventos.append({
                 "ticker": cols[0].text.strip(),
