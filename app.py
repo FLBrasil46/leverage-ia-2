@@ -151,3 +151,91 @@ def bdrs():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
+
+from flask import Flask
+from bs4 import BeautifulSoup
+import os
+
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return """
+    <!DOCTYPE html>
+    <html><head>
+    <meta charset="utf-8">
+    <title>LEVERAGE IA - MELHORES OPORTUNIDADES DO MERCADO</title>
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
+    </head><body class='container py-4'>
+
+    <h1 class='mb-4'>LEVERAGE IA - MELHORES OPORTUNIDADES DO MERCADO</h1>
+
+    <a href="/relatorio_xp" class="btn btn-primary mb-3">📊 Ver Preços-Alvo da XP (Compra)</a>
+
+    <!-- Aqui entraria sua tabela atual de ativos / proventos -->
+
+    </body></html>
+    """
+
+@app.route("/relatorio_xp")
+def relatorio_xp():
+    try:
+        with open("xp_fonte.txt", "r", encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        return "<h2>Arquivo xp_fonte.txt não encontrado.</h2>"
+
+    soup = BeautifulSoup(html, "html.parser")
+    tabela = soup.find("table")
+    ativos = []
+
+    if tabela:
+        for row in tabela.find_all("tr")[1:]:
+            cols = row.find_all("td")
+            if len(cols) >= 6:
+                ticker = cols[0].text.strip()
+                recomendacao = cols[2].text.strip().lower()
+                objetivo_final = cols[5].text.strip()
+
+                if "compra" in recomendacao:
+                    ativos.append({
+                        "ticker": ticker,
+                        "preco_alvo": objetivo_final
+                    })
+
+    if not ativos:
+        return "<h2>Nenhuma recomendação de compra encontrada.</h2>"
+
+    # Montar HTML da tabela
+    linhas = ""
+    for ativo in ativos:
+        linhas += f"<tr><td>{ativo['ticker']}</td><td>{ativo['preco_alvo']}</td></tr>"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html><head>
+    <meta charset="utf-8">
+    <title>Relatório XP - Preço-Alvo</title>
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
+    </head><body class='container py-4'>
+    <h2 class='mb-4'>Ações com Recomendação de Compra - XP Investimentos</h2>
+    <a href="/" class="btn btn-secondary mb-3">⬅ Voltar</a>
+    <table class='table table-striped table-bordered'>
+        <thead class='table-dark'><tr><th>Ticker</th><th>Preço-Alvo</th></tr></thead>
+        <tbody>{linhas}</tbody>
+    </table>
+    </body></html>
+    """
+    return html
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+
+
+
+
+
