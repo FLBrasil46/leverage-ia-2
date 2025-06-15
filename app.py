@@ -2,13 +2,12 @@ from flask import Flask
 from bs4 import BeautifulSoup
 import os
 from datetime import datetime
-import calendar
 import re
 
 app = Flask(__name__)
 DATA_FILE = "investidor10_dividendos.txt"
 
-# Leitura do HTML
+# Leitura do HTML salvo
 try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         html = f.read()
@@ -25,13 +24,12 @@ def extrair_texto_span(td):
     return span.text.strip() if span else td.text.strip()
 
 def parse_data(data_str):
-    try:
-        return datetime.strptime(data_str, "%d/%m/%y")
-    except Exception:
+    for fmt in ("%d/%m/%y", "%d/%m/%Y"):
         try:
-            return datetime.strptime(data_str, "%d/%m/%Y")
+            return datetime.strptime(data_str, fmt)
         except:
-            return None
+            continue
+    return None
 
 def parse_valor(valor_str):
     limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
@@ -55,6 +53,11 @@ if tabela:
             pagamento = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
 
+            if data_com and pagamento and data_com < pagamento:
+                dias_entre = (pagamento - data_com).days
+            else:
+                dias_entre = 9999  # Caso inválido
+
             proventos.append({
                 "ticker": ticker,
                 "tipo": tipo,
@@ -62,18 +65,25 @@ if tabela:
                 "pagamento": pagamento_str,
                 "valor": f"R$ {valor:.2f}",
                 "valor_num": valor,
-                "data_com_date": data_com
+                "data_com_date": data_com,
+                "dias_entre": dias_entre
             })
 
-# Filtra os ativos com data COM futura ou hoje
+# Data atual
 hoje = datetime.now().date()
-ativos_validos = [p for p in proventos if p["data_com_date"] and p["data_com_date"].date() >= hoje]
-ativos_validos = sorted(ativos_validos, key=lambda x: (x["data_com_date"], -x["valor_num"]))
+
+# Filtro: apenas ativos com data COM futura
+ativos_validos = [
+    p for p in proventos if p["data_com_date"] and p["data_com_date"].date() > hoje
+]
+
+# Ordenação: menor intervalo e maior valor
+ativos_validos = sorted(ativos_validos, key=lambda x: (x["dias_entre"], -x["valor_num"]))
 
 @app.route("/")
 def index():
     if not ativos_validos:
-        return "<h2 class='text-center mt-5'>Nenhum provento com data COM futura. Verifique mais tarde.</h2>"
+        return "<h2 class='text-center mt-5'>Nenhum provento com data COM futura.</h2>"
 
     linhas = ""
     for i, p in enumerate(ativos_validos):
@@ -86,6 +96,7 @@ def index():
             <td>{p['data_com']}</td>
             <td>{p['pagamento']}</td>
             <td>{p['valor']}</td>
+            <td>{p['dias_entre']} dias</td>
         </tr>"""
 
     html = f"""
@@ -128,6 +139,7 @@ def index():
                             <th>Data COM</th>
                             <th>Pagamento</th>
                             <th>Valor</th>
+                            <th>Intervalo</th>
                         </tr>
                     </thead>
                     <tbody>{linhas}</tbody>
