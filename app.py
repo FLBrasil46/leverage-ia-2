@@ -6,9 +6,15 @@ import re
 import requests
 
 app = Flask(__name__)
-DATA_FILE = "investidor10_dividendos.txt"
-POLYGON_API_KEY = "8ZzLe4_1diaxGzGiXlY0mSXptBpM_Qao"
 
+# Variável de ambiente para a API
+POLYGON_API_KEY = os.environ.get("POLYGON_API_KEY")
+if not POLYGON_API_KEY:
+    raise EnvironmentError("A variável POLYGON_API_KEY não está definida. Configure no Render.")
+
+DATA_FILE = "investidor10_dividendos.txt"
+
+# Mapeamento de ADRs
 ADR_MAP = {
     "ITUB4": "ITUB",
     "PETR4": "PBR",
@@ -17,6 +23,7 @@ ADR_MAP = {
     "ABEV3": "ABEV"
 }
 
+# Funções auxiliares
 def extrair_texto_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
@@ -46,7 +53,7 @@ def get_preco_adr(ticker_adr):
         pass
     return None
 
-# Lê HTML salvo da tabela do Investidor10
+# Leitura do HTML salvo
 try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         html = f.read()
@@ -91,7 +98,7 @@ def index():
     ]
     ativos_validos = sorted(ativos_validos, key=lambda x: -x["valor_num"])
 
-    # Buscar preço das ADRs dos TOP 5
+    # Busca preços das ADRs do TOP 5
     adr_precos = {}
     for p in ativos_validos[:5]:
         br_ticker = p["ticker"]
@@ -105,7 +112,7 @@ def index():
     for i, p in enumerate(ativos_validos):
         destaque = "table-success fw-semibold" if i < 5 else ""
         selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-        preco_adr = f"<br><small class='text-muted'>${adr_precos.get(p['ticker'], '-'):,.2f}</small>" if p["ticker"] in adr_precos else ""
+        preco_adr = f"<br><small class='text-muted'>ADR: ${adr_precos.get(p['ticker'], '-'):,.2f}</small>" if p["ticker"] in adr_precos else ""
         linhas += f"""
         <tr class='{destaque}'>
             <td>{p['ticker']}{selo}{preco_adr}</td>
@@ -127,12 +134,11 @@ def index():
         <div class="container py-4">
             <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
             <p class="text-center text-muted">Melhores oportunidades do mercado</p>
-
             <div class="table-responsive">
                 <table class="table table-bordered table-hover shadow-sm rounded">
                     <thead class="table-primary text-center">
                         <tr>
-                            <th>Ticker (ADR)</th>
+                            <th>Ticker</th>
                             <th>Tipo</th>
                             <th>Data COM</th>
                             <th>Pagamento</th>
