@@ -8,6 +8,7 @@ import re
 app = Flask(__name__)
 DATA_FILE = "investidor10_dividendos.txt"
 
+# Leitura do HTML
 try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         html = f.read()
@@ -24,13 +25,9 @@ def extrair_texto_span(td):
     return span.text.strip() if span else td.text.strip()
 
 def parse_data(data_str):
-    data_str = data_str.strip()
     try:
-        # Corrige anos no formato "25" para "2025"
-        data = datetime.strptime(data_str, "%d/%m/%y")
-        return data
-    except Exception as e:
-        print(f"Erro ao converter data: '{data_str}' → {e}")
+        return datetime.strptime(data_str, "%d/%m/%y")
+    except Exception:
         return None
 
 def parse_valor(valor_str):
@@ -44,23 +41,13 @@ def calcular_intervalo_dias(data_com, pagamento):
     if not data_com or not pagamento:
         return 9999, "-"
 
-    com_dia = data_com.day
-    pgto_dia = pagamento.day
-
-    if pgto_dia >= com_dia:
-        intervalo = pgto_dia - com_dia
-    else:
-        if pagamento.month == 1:
-            mes_anterior = 12
-            ano_anterior = pagamento.year - 1
-        else:
-            mes_anterior = pagamento.month - 1
-            ano_anterior = pagamento.year
-        dias_mes_anterior = calendar.monthrange(ano_anterior, mes_anterior)[1]
-        intervalo = (dias_mes_anterior - com_dia) + pgto_dia
-
+    # Subtrai diretamente as datas completas
+    intervalo = (pagamento - data_com).days
+    if intervalo < 0:
+        return 9999, "-"
     return intervalo, f"{intervalo} dias"
 
+# Coleta dos dados da tabela
 if tabela:
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
