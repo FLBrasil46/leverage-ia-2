@@ -45,9 +45,9 @@ def carregar_proventos(nome_arquivo):
         cols = row.find_all("td")
         if len(cols) >= 5:
             ticker = extrair_span(cols[0])
-            data_com_str = extrair_span(cols[1])      # Corrigido para Data Com
-            pagamento_str = extrair_span(cols[2])     # Corrigido para Data Pgto
-            tipo = extrair_span(cols[3])              # Corrigido para Tipo
+            data_com_str = extrair_span(cols[1])
+            pagamento_str = extrair_span(cols[2])
+            tipo = extrair_span(cols[3])
             valor_str = extrair_span(cols[4])
 
             data_com = parse_data(data_com_str)
@@ -109,16 +109,20 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
         botao_extra = f"""
         <a href="{rota_oposta}" class="btn btn-outline-primary mb-3">{texto_botao}</a>"""
 
-    iframes = """
+    analises = """
     <hr class="my-5">
     <h2 class="text-center mb-4 text-secondary">Fontes externas de análise</h2>
-    <div class="row row-cols-1 row-cols-md-2 g-4">
-        <div class="col">
-            <iframe src="https://analisa.genialinvestimentos.com.br/acoes/" width="100%" height="400" frameborder="0"></iframe>
-        </div>
-        <div class="col">
-            <iframe src="https://conteudos.xpi.com.br/analise-tecnica/lista-de-ativos/" width="100%" height="400" frameborder="0"></iframe>
-        </div>
+
+    <div class="mb-4">
+        <iframe src="https://analisa.genialinvestimentos.com.br/acoes/" 
+                style="width:100%; height:500px; border:none;"></iframe>
+    </div>
+
+    <div class="text-center">
+        <a href="https://conteudos.xpi.com.br/analise-tecnica/lista-de-ativos/" 
+           target="_blank" class="btn btn-outline-secondary">
+           Acessar site da XP diretamente
+        </a>
     </div>
     """
 
@@ -136,7 +140,7 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
             <p class="text-center text-muted">{titulo}</p>
             <div class="text-center">{botao_extra}</div>
             {corpo_tabela}
-            {iframes}
+            {analises}
         </div>
     </body>
     </html>
