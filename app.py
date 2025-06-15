@@ -45,9 +45,9 @@ def carregar_proventos(nome_arquivo):
         cols = row.find_all("td")
         if len(cols) >= 5:
             ticker = extrair_span(cols[0])
-            data_com_str = extrair_span(cols[1])      # Era "Tipo", agora correto como Data Com
-            pagamento_str = extrair_span(cols[2])     # Era "Data Com", agora correto como Data Pgto
-            tipo = extrair_span(cols[3])              # Era "Data Pgto", agora correto como Tipo
+            data_com_str = extrair_span(cols[1])      # Corrigido para Data Com
+            pagamento_str = extrair_span(cols[2])     # Corrigido para Data Pgto
+            tipo = extrair_span(cols[3])              # Corrigido para Tipo
             valor_str = extrair_span(cols[4])
 
             data_com = parse_data(data_com_str)
@@ -67,18 +67,42 @@ def carregar_proventos(nome_arquivo):
     return proventos
 
 def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
-    linhas = ""
-    for i, p in enumerate(proventos):
-        destaque = "table-success fw-semibold" if i < 5 else ""
-        selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-        linhas += f"""
-        <tr class='{destaque}'>
-            <td>{p['ticker']}{selo}</td>
-            <td>{p['data_com']}</td>
-            <td>{p['pagamento']}</td>
-            <td>{p['tipo']}</td>
-            <td>{p['valor']}</td>
-        </tr>"""
+    if not proventos:
+        mensagem = """
+        <div class='alert alert-warning text-center'>
+            Não existem opções no momento!
+        </div>"""
+        corpo_tabela = mensagem
+    else:
+        corpo_tabela = ""
+        for i, p in enumerate(proventos):
+            destaque = "table-success fw-semibold" if i < 5 else ""
+            selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
+            corpo_tabela += f"""
+            <tr class='{destaque}'>
+                <td>{p['ticker']}{selo}</td>
+                <td>{p['data_com']}</td>
+                <td>{p['pagamento']}</td>
+                <td>{p['tipo']}</td>
+                <td>{p['valor']}</td>
+            </tr>"""
+
+        corpo_tabela = f"""
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover shadow-sm rounded">
+                <thead class="table-primary text-center">
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Data Com</th>
+                        <th>Data Pgto</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>{corpo_tabela}</tbody>
+            </table>
+        </div>
+        """
 
     botao_extra = ""
     if rota_oposta and texto_botao:
@@ -98,20 +122,7 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
             <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
             <p class="text-center text-muted">{titulo}</p>
             <div class="text-center">{botao_extra}</div>
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover shadow-sm rounded">
-                    <thead class="table-primary text-center">
-                        <tr>
-                            <th>Ticker</th>
-                            <th>Data Com</th>
-                            <th>Data Pgto</th>
-                            <th>Tipo</th>
-                            <th>Valor</th>
-                        </tr>
-                    </thead>
-                    <tbody>{linhas}</tbody>
-                </table>
-            </div>
+            {corpo_tabela}
         </div>
     </body>
     </html>
@@ -120,12 +131,22 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html(proventos, "Melhores oportunidades do mercado brasileiro", "/bdrs", "Ver BDRs")
+    return gerar_html(
+        proventos,
+        "Melhores oportunidades do mercado brasileiro com Data Com futura",
+        "/bdrs",
+        "Ver BDRs"
+    )
 
 @app.route("/bdrs")
 def bdrs():
     proventos = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html(proventos, "BDRs em destaque com data futura", "/", "Voltar às Ações")
+    return gerar_html(
+        proventos,
+        "BDRs em destaque com Data Com futura",
+        "/",
+        "Voltar às Ações"
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
