@@ -35,7 +35,15 @@ if tabela:
                 valor = float(valor_str)
             except:
                 valor = 0.0
-            dias_entre = (pagamento - data_com).days if data_com and pagamento else 9999
+
+            # Corrigido: cálculo do intervalo de dias
+            if data_com and pagamento:
+                dias_entre = (pagamento - data_com).days
+                dias_entre_str = f"{dias_entre} dias"
+            else:
+                dias_entre = 9999
+                dias_entre_str = "-"
+
             proventos.append({
                 "ticker": cols[0].text.strip(),
                 "tipo": cols[1].text.strip(),
@@ -43,8 +51,10 @@ if tabela:
                 "pagamento": cols[3].text.strip(),
                 "valor": f"R$ {valor:.2f}",
                 "valor_num": valor,
-                "dias_entre": dias_entre
+                "dias_entre": dias_entre,
+                "dias_entre_str": dias_entre_str
             })
+
     proventos = sorted(proventos, key=lambda x: (x['dias_entre'], -x['valor_num']))
 
 @app.route("/")
@@ -63,7 +73,7 @@ def index():
             <td>{p['data_com']}</td>
             <td>{p['pagamento']}</td>
             <td>{p['valor']}</td>
-            <td>{p['dias_entre']} dias</td>
+            <td>{p['dias_entre_str']}</td>
         </tr>"""
 
     html = f"""
