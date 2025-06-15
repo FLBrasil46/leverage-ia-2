@@ -1,11 +1,14 @@
 from flask import Flask
 from bs4 import BeautifulSoup
-from datetime import datetime
 import os
+from datetime import datetime
 
 app = Flask(__name__)
+
+# Arquivo com o HTML salvo da página do Investidor10
 DATA_FILE = "investidor10_dividendos.txt"
 
+# Leitura segura do arquivo
 try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         html = f.read()
@@ -13,54 +16,53 @@ except FileNotFoundError:
     html = ""
     print(f"Arquivo não encontrado: {DATA_FILE}")
 
+# Parsing do HTML
 soup = BeautifulSoup(html, "html.parser")
-items = soup.select(".dividends__item")  # Estrutura específica do site
+tabela = soup.find("table")
 proventos = []
 
+# Função para converter data
 def parse_data(data_str):
     try:
-        return datetime.strptime(data_str.strip(), "%d/%m/%Y")
+        return datetime.strptime(data_str, "%d/%m/%Y")
     except:
         return None
 
-for item in items:
-    try:
-        ticker = item.select_one(".dividends__code").text.strip()
-        tipo = item.select_one(".dividends__type").text.strip()
-        data_com_str = item.select_one(".dividends__date--com").text.strip()
-        pagamento_str = item.select_one(".dividends__date--pay").text.strip()
-        valor_str = item.select_one(".dividends__value").text.strip().replace("R$", "").replace(",", ".")
-        valor = float(valor_str)
-
-        data_com = parse_data(data_com_str)
-        pagamento = parse_data(pagamento_str)
-        dias_entre = (pagamento - data_com).days if data_com and pagamento else None
-
-        if dias_entre is not None and dias_entre >= 0:
+# Coleta dos dados e ordenação
+if tabela:
+    for row in tabela.find_all("tr")[1:]:  # pula o cabeçalho
+        cols = row.find_all("td")
+        if len(cols) >= 5:
+            data_com = parse_data(cols[2].text.strip())
+            pagamento = parse_data(cols[3].text.strip())
+            valor_str = cols[4].text.strip().replace("R$", "").replace(",", ".")
+            try:
+                valor = float(valor_str)
+            except:
+                valor = 0.0
+            dias_entre = (pagamento - data_com).days if data_com and pagamento else 9999
             proventos.append({
-                "ticker": ticker,
-                "tipo": tipo,
-                "data_com": data_com_str,
-                "pagamento": pagamento_str,
+                "ticker": cols[0].text.strip(),
+                "tipo": cols[1].text.strip(),
+                "data_com": cols[2].text.strip(),
+                "pagamento": cols[3].text.strip(),
                 "valor": f"R$ {valor:.2f}",
                 "valor_num": valor,
                 "dias_entre": dias_entre
             })
-    except Exception as e:
-        print(f"Erro ao processar item: {e}")
 
-# Ordena por menor intervalo e maior valor
-proventos = sorted(proventos, key=lambda x: (x["dias_entre"], -x["valor_num"]))
+    # Ordena por menor intervalo e maior valor
+    proventos = sorted(proventos, key=lambda x: (x['dias_entre'], -x['valor_num']))
 
 @app.route("/")
 def index():
     if not proventos:
-        return "<h2>Nenhum dado carregado. Verifique o conteúdo do arquivo investidor10_dividendos.txt</h2>"
+        return "<h2>Nenhum dado carregado. Verifique o arquivo investidor10_dividendos.txt</h2>"
 
     linhas = ""
     for i, p in enumerate(proventos):
         destaque = "table-success" if i < 5 else ""
-        selo = "<span class='badge bg-success ms-1'>TOP</span>" if i < 5 else ""
+        selo = " <span class='badge bg-success'>TOP</span>" if i < 5 else ""
         linhas += f"<tr class='{destaque}'><td>{p['ticker']}{selo}</td><td>{p['tipo']}</td><td>{p['data_com']}</td><td>{p['pagamento']}</td><td>{p['valor']}</td><td>{p['dias_entre']} dias</td></tr>"
 
     html = f"""
@@ -69,11 +71,11 @@ def index():
     <title>Proventos - Investidor10</title>
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
     </head><body class='container py-4'>
-    <h1 class='mb-4'>Proventos futuros (Investidor10)</h1>
+    <h1 class='mb-4'>Proventos priorizados por intervalo e valor</h1>
     <table class='table table-bordered table-striped'>
-        <thead class='table-dark'>
-            <tr><th>Ticker</th><th>Tipo</th><th>Data COM</th><th>Pagamento</th><th>Valor</th><th>Intervalo</th></tr>
-        </thead>
+        <thead class='table-dark'><tr>
+            <th>Ticker</th><th>Tipo</th><th>Data COM</th><th>Pagamento</th><th>Valor</th><th>Intervalo</th>
+        </tr></thead>
         <tbody>{linhas}</tbody>
     </table>
     </body></html>
