@@ -1,241 +1,107 @@
 from flask import Flask
 from bs4 import BeautifulSoup
-import os
 from datetime import datetime
-import re
+import os
 
 app = Flask(__name__)
 
+# Arquivo com o HTML salvo da página do Investidor10
+DATA_FILE = "investidor10_dividendos.txt"
+
+# Leitura segura do arquivo
+try:
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        html = f.read()
+except FileNotFoundError:
+    html = ""
+    print(f"Arquivo não encontrado: {DATA_FILE}")
+
+# Parsing do HTML
+soup = BeautifulSoup(html, "html.parser")
+tabela = soup.find("table")
+proventos = []
+
+# Função para converter data
 def parse_data(data_str):
-    for fmt in ("%d/%m/%y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(data_str.strip(), fmt)
-        except:
-            continue
-    return None
-
-def parse_valor(valor_str):
-    limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
     try:
-        return float(limpo)
+        return datetime.strptime(data_str, "%d/%m/%y")
     except:
-        return 0.0
+        return None
 
-def extrair_span(td):
-    span = td.find("span", class_="table-field")
-    return span.text.strip() if span else td.text.strip()
+# Data atual
+hoje = datetime.today()
 
-def carregar_proventos(nome_arquivo):
-    proventos = []
-    hoje = datetime.now().date()
-
-    try:
-        with open(nome_arquivo, "r", encoding="utf-8") as f:
-            html = f.read()
-    except FileNotFoundError:
-        return []
-
-    soup = BeautifulSoup(html, "html.parser")
-    tabela = soup.find("table")
-
-    if not tabela:
-        return []
-
+# Coleta dos dados e ordenação
+if tabela:
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
         if len(cols) >= 5:
-            ticker = extrair_span(cols[0])
-            data_com_str = extrair_span(cols[1])      # Corrigido para Data Com
-            pagamento_str = extrair_span(cols[2])     # Corrigido para Data Pgto
-            tipo = extrair_span(cols[3])              # Corrigido para Tipo
-            valor_str = extrair_span(cols[4])
-
-            data_com = parse_data(data_com_str)
-            valor = parse_valor(valor_str)
-
-            if data_com and data_com.date() > hoje:
+            data_com = parse_data(cols[2].text.strip())
+            pagamento = parse_data(cols[3].text.strip())
+            valor_str = cols[4].text.strip().replace("R$", "").replace(",", ".")
+            try:
+                valor = float(valor_str)
+            except:
+                valor = 0.0
+            if data_com and data_com >= hoje:
                 proventos.append({
-                    "ticker": ticker,
-                    "data_com": data_com_str,
-                    "pagamento": pagamento_str,
-                    "tipo": tipo,
+                    "ticker": cols[0].text.strip(),
+                    "tipo": cols[1].text.strip(),
+                    "data_com": cols[2].text.strip(),
+                    "pagamento": cols[3].text.strip(),
                     "valor": f"R$ {valor:.2f}",
-                    "valor_num": valor
+                    "valor_num": valor,
                 })
 
-    proventos = sorted(proventos, key=lambda x: -x["valor_num"])
-    return proventos
+    # Ordena por menor intervalo e maior valor
+    proventos = sorted(
+        proventos,
+        key=lambda x: (
+            (parse_data(x['pagamento']) - parse_data(x['data_com'])).days if parse_data(x['pagamento']) and parse_data(x['data_com']) else 9999,
+            -x['valor_num']
+        )
+    )
 
-def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
+@app.route("/")
+def index():
     if not proventos:
-        mensagem = """
-        <div class='alert alert-warning text-center'>
-            Não existem opções no momento!
-        </div>"""
-        corpo_tabela = mensagem
-    else:
-        corpo_tabela = ""
-        for i, p in enumerate(proventos):
-            destaque = "table-success fw-semibold" if i < 5 else ""
-            selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-            corpo_tabela += f"""
-            <tr class='{destaque}'>
-                <td>{p['ticker']}{selo}</td>
-                <td>{p['data_com']}</td>
-                <td>{p['pagamento']}</td>
-                <td>{p['tipo']}</td>
-                <td>{p['valor']}</td>
-            </tr>"""
+        return "<h2>Nenhum dado carregado. Verifique o arquivo investidor10_dividendos.txt</h2>"
 
-        corpo_tabela = f"""
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover shadow-sm rounded">
-                <thead class="table-primary text-center">
-                    <tr>
-                        <th>Ticker</th>
-                        <th>Data Com</th>
-                        <th>Data Pgto</th>
-                        <th>Tipo</th>
-                        <th>Valor</th>
-                    </tr>
-                </thead>
-                <tbody>{corpo_tabela}</tbody>
-            </table>
-        </div>
-        """
-
-    botao_extra = ""
-    if rota_oposta and texto_botao:
-        botao_extra = f"""
-        <a href="{rota_oposta}" class="btn btn-outline-primary mb-3">{texto_botao}</a>"""
-
-    return f"""
-    <!DOCTYPE html>
-    <html lang="pt-br">
-    <head>
-        <meta charset="utf-8">
-        <title>{titulo}</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body>
-        <div class="container py-4">
-            <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
-            <p class="text-center text-muted">{titulo}</p>
-            <div class="text-center">{botao_extra}</div>
-            {corpo_tabela}
-        </div>
-    </body>
-    </html>
-    """
-
-@app.route("/")
-def index():
-    proventos = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html(
-        proventos,
-        "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        "/bdrs",
-        "Ver BDRs"
-    )
-
-@app.route("/bdrs")
-def bdrs():
-    proventos = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html(
-        proventos,
-        "BDRs em destaque com Data Com futura",
-        "/",
-        "Voltar às Ações"
-    )
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
-
-from flask import Flask
-from bs4 import BeautifulSoup
-import os
-
-app = Flask(__name__)
-
-@app.route("/")
-def index():
-    return """
-    <!DOCTYPE html>
-    <html><head>
-    <meta charset="utf-8">
-    <title>LEVERAGE IA - MELHORES OPORTUNIDADES DO MERCADO</title>
-    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
-    </head><body class='container py-4'>
-
-    <h1 class='mb-4'>LEVERAGE IA - MELHORES OPORTUNIDADES DO MERCADO</h1>
-
-    <a href="/relatorio_xp" class="btn btn-primary mb-3">📊 Ver Preços-Alvo da XP (Compra)</a>
-
-    <!-- Aqui entraria sua tabela atual de ativos / proventos -->
-
-    </body></html>
-    """
-
-@app.route("/relatorio_xp")
-def relatorio_xp():
-    try:
-        with open("xp_fonte.txt", "r", encoding="utf-8") as f:
-            html = f.read()
-    except FileNotFoundError:
-        return "<h2>Arquivo xp_fonte.txt não encontrado.</h2>"
-
-    soup = BeautifulSoup(html, "html.parser")
-    tabela = soup.find("table")
-    ativos = []
-
-    if tabela:
-        for row in tabela.find_all("tr")[1:]:
-            cols = row.find_all("td")
-            if len(cols) >= 6:
-                ticker = cols[0].text.strip()
-                recomendacao = cols[2].text.strip().lower()
-                objetivo_final = cols[5].text.strip()
-
-                if "compra" in recomendacao:
-                    ativos.append({
-                        "ticker": ticker,
-                        "preco_alvo": objetivo_final
-                    })
-
-    if not ativos:
-        return "<h2>Nenhuma recomendação de compra encontrada.</h2>"
-
-    # Montar HTML da tabela
     linhas = ""
-    for ativo in ativos:
-        linhas += f"<tr><td>{ativo['ticker']}</td><td>{ativo['preco_alvo']}</td></tr>"
+    for i, p in enumerate(proventos):
+        destaque = "table-success" if i < 5 else ""
+        selo = " <span class='badge bg-success'>TOP</span>" if i < 5 else ""
+        linhas += f"<tr class='{destaque}'><td>{p['ticker']}{selo}</td><td>{p['tipo']}</td><td>{p['data_com']}</td><td>{p['pagamento']}</td><td>{p['valor']}</td></tr>"
 
     html = f"""
     <!DOCTYPE html>
-    <html><head>
-    <meta charset="utf-8">
-    <title>Relatório XP - Preço-Alvo</title>
+    <html><head><meta charset='utf-8'>
+    <title>LEVERAGE IA - MELHORES OPORTUNIDADES DO MERCADO</title>
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
     </head><body class='container py-4'>
-    <h2 class='mb-4'>Ações com Recomendação de Compra - XP Investimentos</h2>
-    <a href="/" class="btn btn-secondary mb-3">⬅ Voltar</a>
-    <table class='table table-striped table-bordered'>
-        <thead class='table-dark'><tr><th>Ticker</th><th>Preço-Alvo</th></tr></thead>
+    <h1 class='mb-4'>LEVERAGE IA - MELHORES OPORTUNIDADES DO MERCADO</h1>
+
+    <a href="/relatorio_xp" class="btn btn-primary mb-4">📊 Ver Preços-Alvo da XP (Compra)</a>
+
+    <table class='table table-bordered table-striped'>
+        <thead class='table-dark'><tr>
+            <th>Ticker</th><th>Tipo</th><th>Data Com</th><th>Pagamento</th><th>Valor</th>
+        </tr></thead>
         <tbody>{linhas}</tbody>
     </table>
     </body></html>
     """
     return html
 
+# Rota do relatório da XP (exemplo de retorno estático)
+@app.route("/relatorio_xp")
+def relatorio_xp():
+    return "<h2>Relatório XP em construção ou carregamento dinâmico aqui...</h2>"
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    print("Usando porta:", port)
     app.run(host="0.0.0.0", port=port)
-
-
-
 
 
 
