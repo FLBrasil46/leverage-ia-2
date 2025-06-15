@@ -109,6 +109,19 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
         botao_extra = f"""
         <a href="{rota_oposta}" class="btn btn-outline-primary mb-3">{texto_botao}</a>"""
 
+    iframes = """
+    <hr class="my-5">
+    <h2 class="text-center mb-4 text-secondary">Fontes externas de análise</h2>
+    <div class="row row-cols-1 row-cols-md-2 g-4">
+        <div class="col">
+            <iframe src="https://analisa.genialinvestimentos.com.br/acoes/" width="100%" height="400" frameborder="0"></iframe>
+        </div>
+        <div class="col">
+            <iframe src="https://conteudos.xpi.com.br/analise-tecnica/lista-de-ativos/" width="100%" height="400" frameborder="0"></iframe>
+        </div>
+    </div>
+    """
+
     return f"""
     <!DOCTYPE html>
     <html lang="pt-br">
@@ -123,6 +136,7 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
             <p class="text-center text-muted">{titulo}</p>
             <div class="text-center">{botao_extra}</div>
             {corpo_tabela}
+            {iframes}
         </div>
     </body>
     </html>
