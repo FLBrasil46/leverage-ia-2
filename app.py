@@ -28,7 +28,10 @@ def parse_data(data_str):
     try:
         return datetime.strptime(data_str, "%d/%m/%y")
     except Exception:
-        return None
+        try:
+            return datetime.strptime(data_str, "%d/%m/%Y")
+        except:
+            return None
 
 def parse_valor(valor_str):
     limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
@@ -36,16 +39,6 @@ def parse_valor(valor_str):
         return float(limpo)
     except:
         return 0.0
-
-def calcular_intervalo_dias(data_com, pagamento):
-    if not data_com or not pagamento:
-        return 9999, "-"
-
-    # Subtrai diretamente as datas completas
-    intervalo = (pagamento - data_com).days
-    if intervalo < 0:
-        return 9999, "-"
-    return intervalo, f"{intervalo} dias"
 
 # Coleta dos dados da tabela
 if tabela:
@@ -61,7 +54,6 @@ if tabela:
             data_com = parse_data(data_com_str)
             pagamento = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
-            dias_entre, dias_entre_str = calcular_intervalo_dias(data_com, pagamento)
 
             proventos.append({
                 "ticker": ticker,
@@ -70,19 +62,21 @@ if tabela:
                 "pagamento": pagamento_str,
                 "valor": f"R$ {valor:.2f}",
                 "valor_num": valor,
-                "dias_entre": dias_entre,
-                "dias_entre_str": dias_entre_str
+                "data_com_date": data_com
             })
 
-    proventos = sorted(proventos, key=lambda x: (x['dias_entre'], -x['valor_num']))
+# Filtra os ativos com data COM futura ou hoje
+hoje = datetime.now().date()
+ativos_validos = [p for p in proventos if p["data_com_date"] and p["data_com_date"].date() >= hoje]
+ativos_validos = sorted(ativos_validos, key=lambda x: (x["data_com_date"], -x["valor_num"]))
 
 @app.route("/")
 def index():
-    if not proventos:
-        return "<h2 class='text-center mt-5'>Nenhum dado carregado. Verifique o arquivo investidor10_dividendos.txt</h2>"
+    if not ativos_validos:
+        return "<h2 class='text-center mt-5'>Nenhum provento com data COM futura. Verifique mais tarde.</h2>"
 
     linhas = ""
-    for i, p in enumerate(proventos):
+    for i, p in enumerate(ativos_validos):
         destaque = "table-success fw-semibold" if i < 5 else ""
         selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
         linhas += f"""
@@ -92,7 +86,6 @@ def index():
             <td>{p['data_com']}</td>
             <td>{p['pagamento']}</td>
             <td>{p['valor']}</td>
-            <td>{p['dias_entre_str']}</td>
         </tr>"""
 
     html = f"""
@@ -135,7 +128,6 @@ def index():
                             <th>Data COM</th>
                             <th>Pagamento</th>
                             <th>Valor</th>
-                            <th>Intervalo</th>
                         </tr>
                     </thead>
                     <tbody>{linhas}</tbody>
