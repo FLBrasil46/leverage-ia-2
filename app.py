@@ -6,6 +6,7 @@ import re
 
 app = Flask(__name__)
 
+# Função para converter strings de data
 def parse_data(data_str):
     for fmt in ("%d/%m/%y", "%d/%m/%Y"):
         try:
@@ -14,6 +15,7 @@ def parse_data(data_str):
             continue
     return None
 
+# Função para converter valores monetários
 def parse_valor(valor_str):
     limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
     try:
@@ -21,10 +23,12 @@ def parse_valor(valor_str):
     except:
         return 0.0
 
+# Função que extrai texto do <span> ou do <td> diretamente
 def extrair_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
 
+# Função genérica para carregar proventos de qualquer arquivo
 def carregar_proventos(nome_arquivo):
     proventos = []
     hoje = datetime.now().date()
@@ -54,6 +58,7 @@ def carregar_proventos(nome_arquivo):
             pagamento = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
 
+            # Filtro obrigatório: apenas com data_com futura
             if data_com and data_com.date() > hoje:
                 proventos.append({
                     "ticker": ticker,
@@ -64,10 +69,11 @@ def carregar_proventos(nome_arquivo):
                     "valor_num": valor
                 })
 
-    # Ordenar: maior valor primeiro
+    # Ordenação por maior valor
     proventos = sorted(proventos, key=lambda x: -x["valor_num"])
     return proventos
 
+# Geração do HTML com tabela
 def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     linhas = ""
     for i, p in enumerate(proventos):
@@ -106,8 +112,8 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
                         <tr>
                             <th>Ticker</th>
                             <th>Tipo</th>
-                            <th>Data COM</th>
-                            <th>Pagamento</th>
+                            <th>Data Com</th>
+                            <th>Data Pgto</th>
                             <th>Valor</th>
                         </tr>
                     </thead>
