@@ -3,21 +3,19 @@ from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 import re
+import requests
 
 app = Flask(__name__)
 DATA_FILE = "investidor10_dividendos.txt"
+POLYGON_API_KEY = "8ZzLe4_1diaxGzGiXlY0mSXptBpM_Qao"
 
-# Leitura do arquivo HTML salvo
-try:
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        html = f.read()
-except FileNotFoundError:
-    html = ""
-    print(f"Arquivo não encontrado: {DATA_FILE}")
-
-soup = BeautifulSoup(html, "html.parser")
-tabela = soup.find("table")
-proventos = []
+ADR_MAP = {
+    "ITUB4": "ITUB",
+    "PETR4": "PBR",
+    "VALE3": "VALE",
+    "BBAS3": "BDORY",
+    "ABEV3": "ABEV"
+}
 
 def extrair_texto_span(td):
     span = td.find("span", class_="table-field")
@@ -38,7 +36,28 @@ def parse_valor(valor_str):
     except:
         return 0.0
 
-# Coleta dos dados da tabela HTML
+def get_preco_adr(ticker_adr):
+    try:
+        url = f"https://api.polygon.io/v2/last/trade/{ticker_adr}?apiKey={POLYGON_API_KEY}"
+        res = requests.get(url)
+        if res.status_code == 200:
+            return res.json()["last"]["price"]
+    except:
+        pass
+    return None
+
+# Lê HTML salvo da tabela do Investidor10
+try:
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        html = f.read()
+except FileNotFoundError:
+    html = ""
+    print(f"Arquivo não encontrado: {DATA_FILE}")
+
+soup = BeautifulSoup(html, "html.parser")
+tabela = soup.find("table")
+proventos = []
+
 if tabela:
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
@@ -66,21 +85,30 @@ if tabela:
 @app.route("/")
 def index():
     hoje = datetime.now().date()
-
-    # Filtra apenas ativos com data_com futura e ordena por maior valor
     ativos_validos = [
         p for p in proventos
         if p["data_com_date"] and p["data_com_date"].date() > hoje
     ]
     ativos_validos = sorted(ativos_validos, key=lambda x: -x["valor_num"])
 
+    # Buscar preço das ADRs dos TOP 5
+    adr_precos = {}
+    for p in ativos_validos[:5]:
+        br_ticker = p["ticker"]
+        if br_ticker in ADR_MAP:
+            adr = ADR_MAP[br_ticker]
+            preco = get_preco_adr(adr)
+            if preco:
+                adr_precos[br_ticker] = preco
+
     linhas = ""
     for i, p in enumerate(ativos_validos):
         destaque = "table-success fw-semibold" if i < 5 else ""
         selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
+        preco_adr = f"<br><small class='text-muted'>${adr_precos.get(p['ticker'], '-'):,.2f}</small>" if p["ticker"] in adr_precos else ""
         linhas += f"""
         <tr class='{destaque}'>
-            <td>{p['ticker']}{selo}</td>
+            <td>{p['ticker']}{selo}{preco_adr}</td>
             <td>{p['tipo']}</td>
             <td>{p['data_com']}</td>
             <td>{p['pagamento']}</td>
@@ -104,7 +132,7 @@ def index():
                 <table class="table table-bordered table-hover shadow-sm rounded">
                     <thead class="table-primary text-center">
                         <tr>
-                            <th>Ticker</th>
+                            <th>Ticker (ADR)</th>
                             <th>Tipo</th>
                             <th>Data COM</th>
                             <th>Pagamento</th>
