@@ -6,15 +6,10 @@ import re
 
 app = Flask(__name__)
 
-# Funções auxiliares
-def extrair_texto_span(td):
-    span = td.find("span", class_="table-field")
-    return span.text.strip() if span else td.text.strip()
-
 def parse_data(data_str):
     for fmt in ("%d/%m/%y", "%d/%m/%Y"):
         try:
-            return datetime.strptime(data_str, fmt)
+            return datetime.strptime(data_str.strip(), fmt)
         except:
             continue
     return None
@@ -26,8 +21,14 @@ def parse_valor(valor_str):
     except:
         return 0.0
 
+def extrair_span(td):
+    span = td.find("span", class_="table-field")
+    return span.text.strip() if span else td.text.strip()
+
 def carregar_proventos(nome_arquivo):
     proventos = []
+    hoje = datetime.now().date()
+
     try:
         with open(nome_arquivo, "r", encoding="utf-8") as f:
             html = f.read()
@@ -36,39 +37,37 @@ def carregar_proventos(nome_arquivo):
 
     soup = BeautifulSoup(html, "html.parser")
     tabela = soup.find("table")
-    hoje = datetime.now().date()
 
-    if tabela:
-        for row in tabela.find_all("tr")[1:]:
-            cols = row.find_all("td")
-            if len(cols) >= 5:
-                ticker = extrair_texto_span(cols[0])
-                tipo = extrair_texto_span(cols[1])
-                data_com_str = extrair_texto_span(cols[2])
-                pagamento_str = extrair_texto_span(cols[3])
-                valor_str = extrair_texto_span(cols[4])
+    if not tabela:
+        return []
 
-                data_com = parse_data(data_com_str)
-                pagamento = parse_data(pagamento_str)
-                valor = parse_valor(valor_str)
+    for row in tabela.find_all("tr")[1:]:
+        cols = row.find_all("td")
+        if len(cols) >= 5:
+            ticker = extrair_span(cols[0])
+            tipo = extrair_span(cols[1])
+            data_com_str = extrair_span(cols[2])
+            pagamento_str = extrair_span(cols[3])
+            valor_str = extrair_span(cols[4])
 
-                # Só inclui se a data_com for futura
-                if data_com and data_com.date() > hoje:
-                    proventos.append({
-                        "ticker": ticker,
-                        "tipo": tipo,
-                        "data_com": data_com_str,
-                        "pagamento": pagamento_str,
-                        "valor": f"R$ {valor:.2f}",
-                        "valor_num": valor,
-                        "data_com_date": data_com
-                    })
+            data_com = parse_data(data_com_str)
+            pagamento = parse_data(pagamento_str)
+            valor = parse_valor(valor_str)
 
-    # Ordena: maior valor primeiro
+            if data_com and data_com.date() > hoje:
+                proventos.append({
+                    "ticker": ticker,
+                    "tipo": tipo,
+                    "data_com": data_com_str,
+                    "pagamento": pagamento_str,
+                    "valor": f"R$ {valor:.2f}",
+                    "valor_num": valor
+                })
+
+    # Ordenar: maior valor primeiro
     proventos = sorted(proventos, key=lambda x: -x["valor_num"])
     return proventos
 
-# Geração da tabela HTML
 def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     linhas = ""
     for i, p in enumerate(proventos):
@@ -132,5 +131,4 @@ def bdrs():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print("Usando porta:", port)
     app.run(host="0.0.0.0", port=port)
