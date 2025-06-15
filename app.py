@@ -6,7 +6,6 @@ import re
 
 app = Flask(__name__)
 
-# Função para converter strings de data
 def parse_data(data_str):
     for fmt in ("%d/%m/%y", "%d/%m/%Y"):
         try:
@@ -15,7 +14,6 @@ def parse_data(data_str):
             continue
     return None
 
-# Função para converter valores monetários
 def parse_valor(valor_str):
     limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
     try:
@@ -23,12 +21,10 @@ def parse_valor(valor_str):
     except:
         return 0.0
 
-# Função que extrai texto do <span> ou do <td> diretamente
 def extrair_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
 
-# Função genérica para carregar proventos de qualquer arquivo
 def carregar_proventos(nome_arquivo):
     proventos = []
     hoje = datetime.now().date()
@@ -49,31 +45,27 @@ def carregar_proventos(nome_arquivo):
         cols = row.find_all("td")
         if len(cols) >= 5:
             ticker = extrair_span(cols[0])
-            tipo = extrair_span(cols[1])
-            data_com_str = extrair_span(cols[2])
-            pagamento_str = extrair_span(cols[3])
+            data_com_str = extrair_span(cols[1])      # Era "Tipo", agora correto como Data Com
+            pagamento_str = extrair_span(cols[2])     # Era "Data Com", agora correto como Data Pgto
+            tipo = extrair_span(cols[3])              # Era "Data Pgto", agora correto como Tipo
             valor_str = extrair_span(cols[4])
 
             data_com = parse_data(data_com_str)
-            pagamento = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
 
-            # Filtro obrigatório: apenas com data_com futura
             if data_com and data_com.date() > hoje:
                 proventos.append({
                     "ticker": ticker,
-                    "tipo": tipo,
                     "data_com": data_com_str,
                     "pagamento": pagamento_str,
+                    "tipo": tipo,
                     "valor": f"R$ {valor:.2f}",
                     "valor_num": valor
                 })
 
-    # Ordenação por maior valor
     proventos = sorted(proventos, key=lambda x: -x["valor_num"])
     return proventos
 
-# Geração do HTML com tabela
 def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     linhas = ""
     for i, p in enumerate(proventos):
@@ -82,9 +74,9 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
         linhas += f"""
         <tr class='{destaque}'>
             <td>{p['ticker']}{selo}</td>
-            <td>{p['tipo']}</td>
             <td>{p['data_com']}</td>
             <td>{p['pagamento']}</td>
+            <td>{p['tipo']}</td>
             <td>{p['valor']}</td>
         </tr>"""
 
@@ -111,9 +103,9 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
                     <thead class="table-primary text-center">
                         <tr>
                             <th>Ticker</th>
-                            <th>Tipo</th>
                             <th>Data Com</th>
                             <th>Data Pgto</th>
+                            <th>Tipo</th>
                             <th>Valor</th>
                         </tr>
                     </thead>
