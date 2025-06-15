@@ -24,7 +24,8 @@ def parse_data(data_str):
     data_str = data_str.strip().replace("\xa0", "").replace("&nbsp;", "")
     try:
         return datetime.strptime(data_str, "%d/%m/%Y")
-    except:
+    except Exception as e:
+        print(f"Erro ao converter data: '{data_str}' → {e}")
         return None
 
 def parse_valor(valor_str):
@@ -37,14 +38,21 @@ def parse_valor(valor_str):
 def calcular_intervalo_dias(data_com, pagamento):
     if not data_com or not pagamento:
         return 9999, "-"
-    
+
     com_dia = data_com.day
     pgto_dia = pagamento.day
 
     if pgto_dia >= com_dia:
         intervalo = pgto_dia - com_dia
     else:
-        dias_mes_anterior = calendar.monthrange(pagamento.year, pagamento.month - 1 if pagamento.month > 1 else 12)[1]
+        # Se for janeiro, o mês anterior é dezembro do ano anterior
+        if pagamento.month == 1:
+            mes_anterior = 12
+            ano_anterior = pagamento.year - 1
+        else:
+            mes_anterior = pagamento.month - 1
+            ano_anterior = pagamento.year
+        dias_mes_anterior = calendar.monthrange(ano_anterior, mes_anterior)[1]
         intervalo = (dias_mes_anterior - com_dia) + pgto_dia
 
     return intervalo, f"{intervalo} dias"
