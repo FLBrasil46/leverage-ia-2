@@ -2,6 +2,7 @@ from flask import Flask
 from bs4 import BeautifulSoup
 import os
 from datetime import datetime
+import re
 
 app = Flask(__name__)
 
@@ -19,24 +20,28 @@ tabela = soup.find("table")
 proventos = []
 
 def parse_data(data_str):
+    data_str = data_str.strip().replace("\xa0", "").replace("&nbsp;", "")
     try:
         return datetime.strptime(data_str, "%d/%m/%Y")
     except:
         return None
 
+def parse_valor(valor_str):
+    # Remove R$, espaços, nbsp, e substitui vírgula por ponto
+    limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
+    try:
+        return float(limpo)
+    except:
+        return 0.0
+
 if tabela:
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
         if len(cols) >= 5:
-            data_com = parse_data(cols[2].text.strip())
-            pagamento = parse_data(cols[3].text.strip())
-            valor_str = cols[4].text.strip().replace("R$", "").replace(",", ".")
-            try:
-                valor = float(valor_str)
-            except:
-                valor = 0.0
+            data_com = parse_data(cols[2].text)
+            pagamento = parse_data(cols[3].text)
+            valor = parse_valor(cols[4].text)
 
-            # Corrigido: cálculo do intervalo de dias
             if data_com and pagamento:
                 dias_entre = (pagamento - data_com).days
                 dias_entre_str = f"{dias_entre} dias"
