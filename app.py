@@ -1,13 +1,13 @@
 from flask import Flask
 from bs4 import BeautifulSoup
 import os
+from datetime import datetime
+import json
 
 app = Flask(__name__)
+DATA_FILE = "investidor10_dividendos.txt"
 
-# Caminho absoluto confiável para o arquivo
-DATA_FILE = os.path.join(os.path.dirname(__file__), "investidor10_dividendos.txt")
-
-# Carrega HTML localmente (simulando o código-fonte enviado)
+# Lê o HTML local
 try:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         html = f.read()
@@ -15,44 +15,95 @@ except FileNotFoundError:
     html = ""
     print(f"Arquivo não encontrado: {DATA_FILE}")
 
-# Faz o parsing com BeautifulSoup
+# Parser HTML
 soup = BeautifulSoup(html, "html.parser")
 tabela = soup.find("table")
 proventos = []
 
+def parse_data(data_str):
+    try:
+        return datetime.strptime(data_str, "%d/%m/%Y")
+    except:
+        return None
+
+# Coleta e processamento
 if tabela:
-    for row in tabela.find_all("tr")[1:]:  # pula o cabeçalho
+    for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
         if len(cols) >= 5:
-            proventos.append({
-                "ticker": cols[0].text.strip(),
-                "tipo": cols[1].text.strip(),
-                "data_com": cols[2].text.strip(),
-                "pagamento": cols[3].text.strip(),
-                "valor": cols[4].text.strip(),
-            })
+            data_com_str = cols[2].text.strip()
+            pagamento_str = cols[3].text.strip()
+            data_com = parse_data(data_com_str)
+            pagamento = parse_data(pagamento_str)
+            valor_str = cols[4].text.strip().replace("R$", "").replace(",", ".")
+            try:
+                valor = float(valor_str)
+            except:
+                valor = 0.0
+            dias_entre = (pagamento - data_com).days if data_com and pagamento else None
+
+            if dias_entre is not None and dias_entre >= 0:
+                proventos.append({
+                    "ticker": cols[0].text.strip(),
+                    "tipo": cols[1].text.strip(),
+                    "data_com": data_com_str,
+                    "pagamento": pagamento_str,
+                    "valor": f"R$ {valor:.2f}",
+                    "valor_num": valor,
+                    "dias_entre": dias_entre
+                })
+
+    proventos = sorted(proventos, key=lambda x: (x['dias_entre'], -x['valor_num']))
 
 @app.route("/")
 def index():
     if not proventos:
-        return "<h2>Nenhum dado foi carregado. Verifique o arquivo investidor10_dividendos.txt</h2>"
+        return "<h2>Nenhum dado carregado. Verifique o arquivo investidor10_dividendos.txt</h2>"
 
-    linhas = "".join([
-        f"<tr><td>{p['ticker']}</td><td>{p['tipo']}</td><td>{p['data_com']}</td><td>{p['pagamento']}</td><td>{p['valor']}</td></tr>"
-        for p in proventos
-    ])
+    # tabela com destaque e selo
+    linhas = ""
+    for i, p in enumerate(proventos):
+        destaque = "table-success" if i < 5 else ""
+        selo = " <span class='badge bg-success'>TOP</span>" if i < 5 else ""
+        linhas += f"<tr class='{destaque}'><td>{p['ticker']}{selo}</td><td>{p['tipo']}</td><td>{p['data_com']}</td><td>{p['pagamento']}</td><td>{p['valor']}</td><td>{p['dias_entre']} dias</td></tr>"
+
+    # gráfico dos top 5
+    top5 = proventos[:5]
+    labels = [p['ticker'] for p in top5]
+    dias = [p['dias_entre'] for p in top5]
 
     html = f"""
+    <!DOCTYPE html>
     <html><head><meta charset='utf-8'>
-    <title>Agenda de Dividendos - Investidor10</title>
+    <title>Proventos - Investidor10</title>
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
     </head><body class='container py-4'>
-    <h1 class='mb-4'>Proventos Extraídos - Investidor10</h1>
+    <h1 class='mb-4'>Proventos priorizados por intervalo e valor</h1>
+
     <table class='table table-bordered table-striped'>
-        <thead class='table-dark'><tr>
-            <th>Ticker</th><th>Tipo</th><th>Data COM</th><th>Pagamento</th><th>Valor</th>
-        </tr></thead><tbody>{linhas}</tbody>
+        <thead class='table-dark'>
+            <tr><th>Ticker</th><th>Tipo</th><th>Data COM</th><th>Pagamento</th><th>Valor</th><th>Intervalo</th></tr>
+        </thead>
+        <tbody>{linhas}</tbody>
     </table>
+
+    <h3 class='mt-5'>Gráfico: Intervalo em dias dos TOP 5 ativos</h3>
+    <canvas id='grafico' height='100'></canvas>
+    <script>
+    new Chart(document.getElementById('grafico'), {{
+        type: 'bar',
+        data: {{
+            labels: {json.dumps(labels)},
+            datasets: [{{
+                label: 'Dias entre data COM e pagamento',
+                data: {json.dumps(dias)},
+                backgroundColor: 'rgba(54, 162, 235, 0.6)'
+            }}]
+        }}
+    }});
+    </script>
+
     </body></html>
     """
     return html
