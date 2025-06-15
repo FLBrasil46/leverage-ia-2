@@ -52,6 +52,7 @@ def carregar_proventos(nome_arquivo):
                 pagamento = parse_data(pagamento_str)
                 valor = parse_valor(valor_str)
 
+                # Só inclui se a data_com for futura
                 if data_com and data_com.date() > hoje:
                     proventos.append({
                         "ticker": ticker,
