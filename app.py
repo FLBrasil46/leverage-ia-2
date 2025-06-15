@@ -6,7 +6,6 @@ import calendar
 import re
 
 app = Flask(__name__)
-
 DATA_FILE = "investidor10_dividendos.txt"
 
 try:
@@ -20,10 +19,16 @@ soup = BeautifulSoup(html, "html.parser")
 tabela = soup.find("table")
 proventos = []
 
+def extrair_texto_span(td):
+    span = td.find("span", class_="table-field")
+    return span.text.strip() if span else td.text.strip()
+
 def parse_data(data_str):
-    data_str = data_str.strip().replace("\xa0", "").replace("&nbsp;", "")
+    data_str = data_str.strip()
     try:
-        return datetime.strptime(data_str, "%d/%m/%Y")
+        # Corrige anos no formato "25" para "2025"
+        data = datetime.strptime(data_str, "%d/%m/%y")
+        return data
     except Exception as e:
         print(f"Erro ao converter data: '{data_str}' → {e}")
         return None
@@ -45,7 +50,6 @@ def calcular_intervalo_dias(data_com, pagamento):
     if pgto_dia >= com_dia:
         intervalo = pgto_dia - com_dia
     else:
-        # Se for janeiro, o mês anterior é dezembro do ano anterior
         if pagamento.month == 1:
             mes_anterior = 12
             ano_anterior = pagamento.year - 1
@@ -61,17 +65,22 @@ if tabela:
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
         if len(cols) >= 5:
-            data_com = parse_data(cols[2].text)
-            pagamento = parse_data(cols[3].text)
-            valor = parse_valor(cols[4].text)
+            ticker = extrair_texto_span(cols[0])
+            tipo = extrair_texto_span(cols[1])
+            data_com_str = extrair_texto_span(cols[2])
+            pagamento_str = extrair_texto_span(cols[3])
+            valor_str = extrair_texto_span(cols[4])
 
+            data_com = parse_data(data_com_str)
+            pagamento = parse_data(pagamento_str)
+            valor = parse_valor(valor_str)
             dias_entre, dias_entre_str = calcular_intervalo_dias(data_com, pagamento)
 
             proventos.append({
-                "ticker": cols[0].text.strip(),
-                "tipo": cols[1].text.strip(),
-                "data_com": cols[2].text.strip(),
-                "pagamento": cols[3].text.strip(),
+                "ticker": ticker,
+                "tipo": tipo,
+                "data_com": data_com_str,
+                "pagamento": pagamento_str,
                 "valor": f"R$ {valor:.2f}",
                 "valor_num": valor,
                 "dias_entre": dias_entre,
