@@ -3,27 +3,22 @@ from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 import re
-import requests
 
 app = Flask(__name__)
-
-# Variável de ambiente para a API
-POLYGON_API_KEY = os.environ.get("POLYGON_API_KEY")
-if not POLYGON_API_KEY:
-    raise EnvironmentError("A variável POLYGON_API_KEY não está definida. Configure no Render.")
-
 DATA_FILE = "investidor10_dividendos.txt"
 
-# Mapeamento de ADRs
-ADR_MAP = {
-    "ITUB4": "ITUB",
-    "PETR4": "PBR",
-    "VALE3": "VALE",
-    "BBAS3": "BDORY",
-    "ABEV3": "ABEV"
-}
+# Leitura do arquivo HTML salvo
+try:
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        html = f.read()
+except FileNotFoundError:
+    html = ""
+    print(f"Arquivo não encontrado: {DATA_FILE}")
 
-# Funções auxiliares
+soup = BeautifulSoup(html, "html.parser")
+tabela = soup.find("table")
+proventos = []
+
 def extrair_texto_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
@@ -43,28 +38,7 @@ def parse_valor(valor_str):
     except:
         return 0.0
 
-def get_preco_adr(ticker_adr):
-    try:
-        url = f"https://api.polygon.io/v2/last/trade/{ticker_adr}?apiKey={POLYGON_API_KEY}"
-        res = requests.get(url)
-        if res.status_code == 200:
-            return res.json()["last"]["price"]
-    except:
-        pass
-    return None
-
-# Leitura do HTML salvo
-try:
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        html = f.read()
-except FileNotFoundError:
-    html = ""
-    print(f"Arquivo não encontrado: {DATA_FILE}")
-
-soup = BeautifulSoup(html, "html.parser")
-tabela = soup.find("table")
-proventos = []
-
+# Coleta dos dados da tabela HTML
 if tabela:
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
@@ -92,30 +66,21 @@ if tabela:
 @app.route("/")
 def index():
     hoje = datetime.now().date()
+
+    # Filtra apenas ativos com data_com futura e ordena por maior valor
     ativos_validos = [
         p for p in proventos
         if p["data_com_date"] and p["data_com_date"].date() > hoje
     ]
     ativos_validos = sorted(ativos_validos, key=lambda x: -x["valor_num"])
 
-    # Busca preços das ADRs do TOP 5
-    adr_precos = {}
-    for p in ativos_validos[:5]:
-        br_ticker = p["ticker"]
-        if br_ticker in ADR_MAP:
-            adr = ADR_MAP[br_ticker]
-            preco = get_preco_adr(adr)
-            if preco:
-                adr_precos[br_ticker] = preco
-
     linhas = ""
     for i, p in enumerate(ativos_validos):
         destaque = "table-success fw-semibold" if i < 5 else ""
         selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-        preco_adr = f"<br><small class='text-muted'>ADR: ${adr_precos.get(p['ticker'], '-'):,.2f}</small>" if p["ticker"] in adr_precos else ""
         linhas += f"""
         <tr class='{destaque}'>
-            <td>{p['ticker']}{selo}{preco_adr}</td>
+            <td>{p['ticker']}{selo}</td>
             <td>{p['tipo']}</td>
             <td>{p['data_com']}</td>
             <td>{p['pagamento']}</td>
@@ -134,6 +99,7 @@ def index():
         <div class="container py-4">
             <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
             <p class="text-center text-muted">Melhores oportunidades do mercado</p>
+
             <div class="table-responsive">
                 <table class="table table-bordered table-hover shadow-sm rounded">
                     <thead class="table-primary text-center">
