@@ -28,19 +28,15 @@ def extrair_span(td):
 def carregar_proventos(nome_arquivo):
     proventos = []
     hoje = datetime.now().date()
-
     try:
         with open(nome_arquivo, "r", encoding="utf-8") as f:
             html = f.read()
     except FileNotFoundError:
         return []
-
     soup = BeautifulSoup(html, "html.parser")
     tabela = soup.find("table")
-
     if not tabela:
         return []
-
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
         if len(cols) >= 5:
@@ -48,11 +44,8 @@ def carregar_proventos(nome_arquivo):
             data_com_str = extrair_span(cols[1])
             pagamento_str = extrair_span(cols[2])
             tipo = extrair_span(cols[3])
-            valor_str = extrair_span(cols[4])
-
+            valor = parse_valor(extrair_span(cols[4]))
             data_com = parse_data(data_com_str)
-            valor = parse_valor(valor_str)
-
             if data_com and data_com.date() > hoje:
                 proventos.append({
                     "ticker": ticker,
@@ -62,86 +55,78 @@ def carregar_proventos(nome_arquivo):
                     "valor": f"R$ {valor:.2f}",
                     "valor_num": valor
                 })
-
-    proventos = sorted(proventos, key=lambda x: -x["valor_num"])
-    return proventos
+    return sorted(proventos, key=lambda x: -x["valor_num"])
 
 def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     if not proventos:
-        mensagem = """
-        <div class='alert alert-warning text-center'>
-            Não existem opções no momento!
-        </div>"""
-        corpo_tabela = mensagem
+        corpo = "<div class='alert alert-warning'>Não existem opções no momento!</div>"
     else:
-        corpo_tabela = ""
+        linhas = ""
         for i, p in enumerate(proventos):
             destaque = "table-success fw-semibold" if i < 5 else ""
             selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-            corpo_tabela += f"""
-            <tr class='{destaque}'>
-                <td>{p['ticker']}{selo}</td>
-                <td>{p['data_com']}</td>
-                <td>{p['pagamento']}</td>
-                <td>{p['tipo']}</td>
-                <td>{p['valor']}</td>
-            </tr>"""
+            linhas += (
+                f"<tr class='{destaque}'>"
+                f"<td>{p['ticker']}{selo}</td>"
+                f"<td>{p['data_com']}</td>"
+                f"<td>{p['pagamento']}</td>"
+                f"<td>{p['tipo']}</td>"
+                f"<td>{p['valor']}</td>"
+                "</tr>"
+            )
+        corpo = (
+            "<div class='table-responsive'>"
+            "<table class='table table-bordered table-hover'>"
+            "<thead class='table-primary text-center'><tr>"
+            "<th>Ticker</th><th>Data Com</th><th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
+            "</tr></thead>"
+            f"<tbody>{linhas}</tbody>"
+            "</table></div>"
+        )
 
-        corpo_tabela = f"""
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover shadow-sm rounded">
-                <thead class="table-primary text-center">
-                    <tr>
-                        <th>Ticker</th>
-                        <th>Data Com</th>
-                        <th>Data Pgto</th>
-                        <th>Tipo</th>
-                        <th>Valor</th>
-                    </tr>
-                </thead>
-                <tbody>{corpo_tabela}</tbody>
-            </table>
-        </div>
-        """
-
-    botao_extra = ""
+    botao = ""
     if rota_oposta and texto_botao:
-        botao_extra = f"""
-        <a href="{rota_oposta}" class="btn btn-outline-primary mb-3">{texto_botao}</a>"""
+        botao = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>"
 
-    analises = """
-    <hr class="my-5">
-    <h2 class="text-center mb-4 text-secondary">Fontes externas de análise</h2>
-
-    <div class="mb-4">
-        <iframe src="https://analisa.genialinvestimentos.com.br/acoes/" 
-                style="width:100%; height:500px; border:none;"></iframe>
+    # Ticker Tape da TradingView
+    ticker_tape = """
+    <div class="tradingview-widget-container mb-4">
+      <div id="tradingview_12345"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+      {
+        "symbols": [
+          {"proName": "BMF/BVSP","title": "Bovespa"},
+          {"proName": "BMFBOVESPA:USDBRL","title": "USDBRL"},
+          {"proName": "NASDAQ:TSLA","title": "TSLA"},
+          {"proName": "NYSE:IBM","title": "IBM"}
+        ],
+        "showSymbolLogo": true,
+        "colorTheme": "light",
+        "isTransparent": false,
+        "displayMode": "adaptive",
+        "locale": "pt"
+      }
+      </script>
     </div>
-
-    <div class="text-center">
-        <a href="https://conteudos.xpi.com.br/analise-tecnica/lista-de-ativos/" 
-           target="_blank" class="btn btn-outline-secondary">
-           Acessar site da XP diretamente
-        </a>
-    </div>
-    """
+    """  # :contentReference[oaicite:1]{index=1}
 
     return f"""
     <!DOCTYPE html>
     <html lang="pt-br">
     <head>
-        <meta charset="utf-8">
-        <title>{titulo}</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+      <meta charset="utf-8">
+      <title>{titulo}</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
-    <body>
-        <div class="container py-4">
-            <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
-            <p class="text-center text-muted">{titulo}</p>
-            <div class="text-center">{botao_extra}</div>
-            {corpo_tabela}
-            {analises}
-        </div>
+    <body class="container py-3">
+
+      <!-- Barra de cotação -->
+      {ticker_tape}
+
+      <h1 class='text-center mb-4 text-primary'>LEVERAGE IA</h1>
+      <p class='text-center text-muted mb-3'>{titulo}</p>
+      <div class="text-center">{botao}</div>
+      {corpo}
     </body>
     </html>
     """
@@ -149,23 +134,18 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html(
-        proventos,
+    return gerar_html(proventos,
         "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        "/bdrs",
-        "Ver BDRs"
+        "/bdrs", "Ver BDRs"
     )
 
 @app.route("/bdrs")
 def bdrs():
     proventos = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html(
-        proventos,
+    return gerar_html(proventos,
         "BDRs em destaque com Data Com futura",
-        "/",
-        "Voltar às Ações"
+        "/", "Voltar às Ações"
     )
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
