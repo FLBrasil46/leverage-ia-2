@@ -190,6 +190,8 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoe
         <meta charset="utf-8">
         <title>{titulo}</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6564632305915886"
+     crossorigin="anonymous"></script>
     </head>
     <body>
         {widget_header}
