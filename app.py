@@ -1,6 +1,5 @@
 from flask import Flask
 from bs4 import BeautifulSoup
-import os
 from datetime import datetime
 import re
 import json
@@ -9,139 +8,104 @@ app = Flask(__name__)
 
 def parse_data(data_str):
     for fmt in ("%d/%m/%y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(data_str.strip(), fmt)
-        except:
-            continue
+        try: return datetime.strptime(data_str.strip(), fmt)
+        except: continue
     return None
 
-def parse_valor(valor_str):
-    limpo = re.sub(r"[^\d,\.]", "", valor_str.replace(",", "."))
-    try:
-        return float(limpo)
-    except:
-        return 0.0
+def parse_valor(v):
+    limpa = re.sub(r"[^\d,\.]", "", v.replace(",", "."))
+    return float(limpa) if limpa else 0.0
 
 def extrair_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
 
-def carregar_proventos(nome_arquivo):
-    proventos = []
+def carregar_proventos(arq):
     hoje = datetime.now().date()
+    proventos = []
     try:
-        with open(nome_arquivo, "r", encoding="utf-8") as f:
-            html = f.read()
-    except FileNotFoundError:
+        html = open(arq, encoding="utf-8").read()
+    except:
         return []
     soup = BeautifulSoup(html, "html.parser")
-    tabela = soup.find("table")
-    if not tabela:
-        return []
-    for row in tabela.find_all("tr")[1:]:
-        cols = row.find_all("td")
-        if len(cols) >= 5:
-            ticker = extrair_span(cols[0]).upper()
-            data_com_str = extrair_span(cols[1])
-            pagamento_str = extrair_span(cols[2])
-            tipo = extrair_span(cols[3])
-            valor = parse_valor(extrair_span(cols[4]))
-            data_com = parse_data(data_com_str)
+    t = soup.find("table")
+    if not t: return []
+    for row in t.find_all("tr")[1:]:
+        c = row.find_all("td")
+        if len(c) >= 5:
+            data_com = parse_data(extrair_span(c[1]))
             if data_com and data_com.date() > hoje:
                 proventos.append({
-                    "ticker": ticker,
-                    "data_com": data_com_str,
-                    "pagamento": pagamento_str,
-                    "tipo": tipo,
-                    "valor": f"R$ {valor:.2f}",
-                    "valor_num": valor
+                    "ticker": extrair_span(c[0]).upper(),
+                    "data_com": extrair_span(c[1]),
+                    "pagamento": extrair_span(c[2]),
+                    "tipo": extrair_span(c[3]),
+                    "valor_num": parse_valor(extrair_span(c[4])),
+                    "valor": f"R$ {parse_valor(extrair_span(c[4])):.2f}"
                 })
     return sorted(proventos, key=lambda x: -x["valor_num"])
 
-def gerar_widget_header(proventos):
-    symbols = []
-    for p in proventos[:5]:
-        sym = p["ticker"]
-        symbols.append({"proName": f"BMFBOVESPA:{sym}", "title": sym})
-    config = {
-        "symbols": symbols,
+def gerar_widget_top5(proventos):
+    top = proventos[:5]
+    syms = [{"proName": f"BMFBOVESPA:{p['ticker']}", "title": p['ticker']} for p in top]
+    cfg = {
+        "symbols": syms,
         "showSymbolLogo": True,
         "colorTheme": "light",
-        "isTransparent": False,
         "displayMode": "adaptive",
         "locale": "pt"
     }
     return f"""
     <div class="tradingview-widget-container mb-4">
       <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-      {json.dumps(config)}
+      <script src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+      {json.dumps(cfg)}
       </script>
     </div>
-    """  # :contentReference[oaicite:1]{index=1}
+    """
 
-def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
-    widget_html = gerar_widget_header(proventos) if proventos else ""
-    if not proventos:
-        corpo = "<div class='alert alert-warning text-center'>Não existem opções no momento!</div>"
+def gerar_html(provs, title, rota=None, texto=""):
+    widget = gerar_widget_top5(provs) if provs else ""
+    corpo = ""
+    if not provs:
+        corpo = "<div class='alert alert-warning'>Não existem opções!</div>"
     else:
         linhas = ""
-        for i, p in enumerate(proventos):
-            destaque = "table-success fw-semibold" if i < 5 else ""
-            selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-            linhas += (
-                f"<tr class='{destaque}'>"
-                f"<td>{p['ticker']}{selo}</td>"
-                f"<td>{p['data_com']}</td>"
-                f"<td>{p['pagamento']}</td>"
-                f"<td>{p['tipo']}</td>"
-                f"<td>{p['valor']}</td>"
-                "</tr>"
-            )
+        for i, p in enumerate(provs):
+            selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i<5 else ""
+            linhas += f"<tr><td>{p['ticker']}{selo}</td><td>{p['data_com']}</td><td>{p['pagamento']}</td><td>{p['tipo']}</td><td>{p['valor']}</td></tr>"
         corpo = (
-            "<div class='table-responsive'>"
-            "<table class='table table-bordered table-hover'>"
-            "<thead class='table-primary text-center'><tr>"
-            "<th>Ticker</th><th>Data Com</th><th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
-            "</tr></thead>"
-            f"<tbody>{linhas}</tbody>"
-            "</table></div>"
+          "<div class='table-responsive'><table class='table table-bordered table-hover'>"
+          "<thead class='table-primary text-center'><tr>"
+          "<th>Ticker</th><th>Data Com</th><th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
+          "</tr></thead><tbody>"
+          +linhas+
+          "</tbody></table></div>"
         )
-    botao = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>" if rota_oposta else ""
+    bot = f"<a href='{rota}' class='btn btn-outline-primary mb-3'>{texto}</a>" if rota else ""
     return f"""
     <!DOCTYPE html>
-    <html lang="pt-br">
-    <head>
-      <meta charset="utf-8">
-      <title>{titulo}</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="container py-3">
-      {widget_html}
-      <h1 class='text-center mb-4 text-primary'>LEVERAGE IA</h1>
-      <p class='text-center text-muted mb-3'>{titulo}</p>
-      <div class="text-center">{botao}</div>
+    <html lang="pt-br"><head><meta charset="utf-8">
+    <title>{title}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head><body class="container py-3">
+      {widget}
+      <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
+      <p class="text-center text-muted mb-3">{title}</p>
+      <div class="text-center">{bot}</div>
       {corpo}
-    </body>
-    </html>
+    </body></html>
     """
 
 @app.route("/")
 def index():
-    proventos = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html(proventos,
-        "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        "/bdrs", "Ver BDRs"
-    )
+    prov = carregar_proventos("investidor10_dividendos.txt")
+    return gerar_html(prov, "Melhores Ações (Data Com futura)", "/bdrs", "Ver BDRs")
 
 @app.route("/bdrs")
 def bdrs():
-    proventos = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html(proventos,
-        "BDRs em destaque com Data Com futura",
-        "/", "Voltar às Ações"
-    )
+    prov = carregar_proventos("investidor10_bdrs.txt")
+    return gerar_html(prov, "Melhores BDRs (Data Com futura)", "/", "Voltar às Ações")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
