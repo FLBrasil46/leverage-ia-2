@@ -1,13 +1,10 @@
-# app.py
 from flask import Flask
 from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 import re
-from analise_preco import analise_bp  # Importa o blueprint
 
 app = Flask(__name__)
-app.register_blueprint(analise_bp)  # Registra o blueprint
 
 def parse_data(data_str):
     for fmt in ("%d/%m/%y", "%d/%m/%Y"):
@@ -158,20 +155,23 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoe
                     <td>{p['valor']}</td>
                 </tr>"""
 
-        cabecalho = """
-            <tr>
-                <th>Ticker</th>
-                <th>Data Pgto</th>
-                <th>Tipo</th>
-                <th>Valor</th>
-            </tr>""" if tipo == "fiis" else """
-            <tr>
-                <th>Ticker</th>
-                <th>Data Com</th>
-                <th>Data Pgto</th>
-                <th>Tipo</th>
-                <th>Valor</th>
-            </tr>"
+        if tipo == "fiis":
+            cabecalho = """
+                <tr>
+                    <th>Ticker</th>
+                    <th>Data Pgto</th>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                </tr>"""
+        else:
+            cabecalho = """
+                <tr>
+                    <th>Ticker</th>
+                    <th>Data Com</th>
+                    <th>Data Pgto</th>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                </tr>"""
 
         corpo = f"""
         <div class="table-responsive">
@@ -209,12 +209,17 @@ def index():
 
     botoes = """
     <div class="d-flex flex-wrap justify-content-center gap-3 mb-4">
-        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">BDRs</a>
-        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">FIIs</a>
-        <a href="/preco-alvo" class="btn btn-outline-dark d-flex align-items-center px-4 py-2 shadow-sm">Preço-Alvo</a>
+        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">
+            BDRs
+        </a>
+        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">
+            FIIs
+        </a>
     </div>"""
 
-    html = gerar_html(proventos, "Melhores oportunidades do mercado brasileiro com Data Com futura")
+    html = gerar_html(proventos,
+        "Melhores oportunidades do mercado brasileiro com Data Com futura"
+    )
     return html.replace('<div class="text-center"></div>', botoes)
 
 @app.route("/bdrs")
