@@ -215,6 +215,11 @@ def index():
         <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">
             FIIs
         </a>
+        <a href="https://ed07cb4f-2763-4d84-bf4f-4c5ab86a7717-00-rsaumcmltcrm.worf.replit.dev:5000/" 
+           target="_blank" 
+           class="btn btn-outline-dark d-flex align-items-center px-4 py-2 shadow-sm">
+            Ver Preço-Alvo
+        </a>
     </div>"""
 
     html = gerar_html(proventos,
