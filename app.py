@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 import re
-import json
 
 app = Flask(__name__)
 
@@ -29,24 +28,31 @@ def extrair_span(td):
 def carregar_proventos(nome_arquivo):
     proventos = []
     hoje = datetime.now().date()
+
     try:
         with open(nome_arquivo, "r", encoding="utf-8") as f:
             html = f.read()
     except FileNotFoundError:
         return []
+
     soup = BeautifulSoup(html, "html.parser")
     tabela = soup.find("table")
+
     if not tabela:
         return []
+
     for row in tabela.find_all("tr")[1:]:
         cols = row.find_all("td")
         if len(cols) >= 5:
             ticker = extrair_span(cols[0])
-            data_com_str = extrair_span(cols[1])
-            pagamento_str = extrair_span(cols[2])
-            tipo = extrair_span(cols[3])
-            valor = parse_valor(extrair_span(cols[4]))
+            data_com_str = extrair_span(cols[1])      # Corrigido para Data Com
+            pagamento_str = extrair_span(cols[2])     # Corrigido para Data Pgto
+            tipo = extrair_span(cols[3])              # Corrigido para Tipo
+            valor_str = extrair_span(cols[4])
+
             data_com = parse_data(data_com_str)
+            valor = parse_valor(valor_str)
+
             if data_com and data_com.date() > hoje:
                 proventos.append({
                     "ticker": ticker,
@@ -56,80 +62,93 @@ def carregar_proventos(nome_arquivo):
                     "valor": f"R$ {valor:.2f}",
                     "valor_num": valor
                 })
-    return sorted(proventos, key=lambda x: -x["valor_num"])
 
-def gerar_widget(tickers):
-    symbols = []
-    for t in tickers[:5]:
-        symbol = t["ticker"].upper()
-        if "." in symbol:
-            symbols.append({"description": symbol, "proName": f"BMFBOVESPA:{symbol.replace('.', '')}"})
-        else:
-            symbols.append({"description": symbol, "proName": f"BMFBOVESPA:{symbol}"})
-    config = {
-        "symbols": symbols,
-        "showSymbolLogo": True,
+    proventos = sorted(proventos, key=lambda x: -x["valor_num"])
+    return proventos
+
+def gerar_widget_header():
+    return """
+    <div class='tradingview-widget-container mb-4'>
+      <div class='tradingview-widget-container__widget'></div>
+      <script type='text/javascript' src='https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js' async>
+      {
+        "symbols": [
+          {"proName": "BMFBOVESPA:PETR4", "title": "PETR4"},
+          {"proName": "BMFBOVESPA:VALE3", "title": "VALE3"},
+          {"proName": "BMFBOVESPA:ITUB4", "title": "ITUB4"},
+          {"proName": "BMFBOVESPA:B3SA3", "title": "B3SA3"},
+          {"proName": "BMFBOVESPA:WEGE3", "title": "WEGE3"}
+        ],
         "colorTheme": "light",
-        "isTransparent": False,
+        "isTransparent": false,
         "displayMode": "adaptive",
         "locale": "pt"
-    }
-    return f"""
-    <div class="tradingview-widget-container mb-4">
-        <div id="ticker-widget"></div>
-        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-        {json.dumps(config)}
-        </script>
+      }
+      </script>
     </div>
     """
 
-def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, widget_html=""):
+def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
+    widget_header = gerar_widget_header()
+
     if not proventos:
-        corpo = "<div class='alert alert-warning'>Não existem opções no momento!</div>"
+        mensagem = """
+        <div class='alert alert-warning text-center'>
+            Não existem opções no momento!
+        </div>"""
+        corpo_tabela = mensagem
     else:
-        linhas = ""
+        corpo_tabela = ""
         for i, p in enumerate(proventos):
             destaque = "table-success fw-semibold" if i < 5 else ""
             selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-            linhas += (
-                f"<tr class='{destaque}'>"
-                f"<td>{p['ticker']}{selo}</td>"
-                f"<td>{p['data_com']}</td>"
-                f"<td>{p['pagamento']}</td>"
-                f"<td>{p['tipo']}</td>"
-                f"<td>{p['valor']}</td>"
-                "</tr>"
-            )
-        corpo = (
-            "<div class='table-responsive'>"
-            "<table class='table table-bordered table-hover'>"
-            "<thead class='table-primary text-center'><tr>"
-            "<th>Ticker</th><th>Data Com</th><th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
-            "</tr></thead>"
-            f"<tbody>{linhas}</tbody>"
-            "</table></div>"
-        )
+            corpo_tabela += f"""
+            <tr class='{destaque}'>
+                <td>{p['ticker']}{selo}</td>
+                <td>{p['data_com']}</td>
+                <td>{p['pagamento']}</td>
+                <td>{p['tipo']}</td>
+                <td>{p['valor']}</td>
+            </tr>"""
 
-    botao = ""
+        corpo_tabela = f"""
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover shadow-sm rounded">
+                <thead class="table-primary text-center">
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Data Com</th>
+                        <th>Data Pgto</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>{corpo_tabela}</tbody>
+            </table>
+        </div>
+        """
+
+    botao_extra = ""
     if rota_oposta and texto_botao:
-        botao = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>"
+        botao_extra = f"""
+        <a href="{rota_oposta}" class="btn btn-outline-primary mb-3">{texto_botao}</a>"""
 
     return f"""
     <!DOCTYPE html>
     <html lang="pt-br">
     <head>
-      <meta charset="utf-8">
-      <title>{titulo}</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <meta charset="utf-8">
+        <title>{titulo}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
-    <body class="container py-3">
-
-      {widget_html}
-
-      <h1 class='text-center mb-4 text-primary'>LEVERAGE IA</h1>
-      <p class='text-center text-muted mb-3'>{titulo}</p>
-      <div class="text-center">{botao}</div>
-      {corpo}
+    <body>
+        {widget_header}
+        <div class="container py-4">
+            <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
+            <p class="text-center text-muted">{titulo}</p>
+            <div class="text-center">{botao_extra}</div>
+            {corpo_tabela}
+        </div>
     </body>
     </html>
     """
@@ -137,22 +156,23 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, widget_htm
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
-    widget = gerar_widget(proventos) if proventos else ""
-    return gerar_html(proventos,
+    return gerar_html(
+        proventos,
         "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        "/bdrs", "Ver BDRs",
-        widget
+        "/bdrs",
+        "Ver BDRs"
     )
 
 @app.route("/bdrs")
 def bdrs():
     proventos = carregar_proventos("investidor10_bdrs.txt")
-    widget = gerar_widget(proventos) if proventos else ""
-    return gerar_html(proventos,
+    return gerar_html(
+        proventos,
         "BDRs em destaque com Data Com futura",
-        "/", "Voltar às Ações",
-        widget
+        "/",
+        "Voltar às Ações"
     )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
