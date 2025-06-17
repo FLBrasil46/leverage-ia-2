@@ -209,15 +209,13 @@ def index():
 
     botoes = """
     <div class="d-flex flex-wrap justify-content-center gap-3 mb-4">
-        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">
-            BDRs
-        </a>
-        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">
-            FIIs
-        </a>
+        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">BDRs</a>
+        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">FIIs</a>
+        <a href="/preco-alvo" class="btn btn-outline-dark d-flex align-items-center px-4 py-2 shadow-sm">Preço-Alvo</a>
     </div>"""
 
-    html = gerar_html(proventos,
+    html = gerar_html(
+        proventos,
         "Melhores oportunidades do mercado brasileiro com Data Com futura"
     )
     return html.replace('<div class="text-center"></div>', botoes)
@@ -240,6 +238,36 @@ def fiis():
         "/", "Voltar às Ações",
         tipo="fiis"
     )
+
+@app.route("/preco-alvo")
+def preco_alvo():
+    iframe_url = "https://seu-app-preco-alvo.onrender.com"  # Substitua pela URL real
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt-br">
+    <head>
+        <meta charset="utf-8">
+        <title>Consulta de Preço-Alvo</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            iframe {{
+                width: 100%;
+                height: 800px;
+                border: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container py-4">
+            <h1 class="text-center text-primary mb-4">Análise de Preço-Alvo</h1>
+            <iframe src="{iframe_url}"></iframe>
+            <div class="text-center mt-4">
+                <a href="/" class="btn btn-outline-secondary">Voltar</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
