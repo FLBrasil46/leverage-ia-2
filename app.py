@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 import re
+import json
 
 app = Flask(__name__)
 
@@ -57,7 +58,32 @@ def carregar_proventos(nome_arquivo):
                 })
     return sorted(proventos, key=lambda x: -x["valor_num"])
 
-def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
+def gerar_widget(tickers):
+    symbols = []
+    for t in tickers[:5]:
+        symbol = t["ticker"].upper()
+        if "." in symbol:
+            symbols.append({"description": symbol, "proName": f"BMFBOVESPA:{symbol.replace('.', '')}"})
+        else:
+            symbols.append({"description": symbol, "proName": f"BMFBOVESPA:{symbol}"})
+    config = {
+        "symbols": symbols,
+        "showSymbolLogo": True,
+        "colorTheme": "light",
+        "isTransparent": False,
+        "displayMode": "adaptive",
+        "locale": "pt"
+    }
+    return f"""
+    <div class="tradingview-widget-container mb-4">
+        <div id="ticker-widget"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+        {json.dumps(config)}
+        </script>
+    </div>
+    """
+
+def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, widget_html=""):
     if not proventos:
         corpo = "<div class='alert alert-warning'>Não existem opções no momento!</div>"
     else:
@@ -88,28 +114,6 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     if rota_oposta and texto_botao:
         botao = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>"
 
-    # Ticker Tape da TradingView
-    ticker_tape = """
-    <div class="tradingview-widget-container mb-4">
-      <div id="tradingview_12345"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-      {
-        "symbols": [
-          {"proName": "BMF/BVSP","title": "Bovespa"},
-          {"proName": "BMFBOVESPA:USDBRL","title": "USDBRL"},
-          {"proName": "NASDAQ:TSLA","title": "TSLA"},
-          {"proName": "NYSE:IBM","title": "IBM"}
-        ],
-        "showSymbolLogo": true,
-        "colorTheme": "light",
-        "isTransparent": false,
-        "displayMode": "adaptive",
-        "locale": "pt"
-      }
-      </script>
-    </div>
-    """  # :contentReference[oaicite:1]{index=1}
-
     return f"""
     <!DOCTYPE html>
     <html lang="pt-br">
@@ -120,8 +124,7 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     </head>
     <body class="container py-3">
 
-      <!-- Barra de cotação -->
-      {ticker_tape}
+      {widget_html}
 
       <h1 class='text-center mb-4 text-primary'>LEVERAGE IA</h1>
       <p class='text-center text-muted mb-3'>{titulo}</p>
@@ -134,18 +137,22 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
+    widget = gerar_widget(proventos) if proventos else ""
     return gerar_html(proventos,
         "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        "/bdrs", "Ver BDRs"
+        "/bdrs", "Ver BDRs",
+        widget
     )
 
 @app.route("/bdrs")
 def bdrs():
     proventos = carregar_proventos("investidor10_bdrs.txt")
+    widget = gerar_widget(proventos) if proventos else ""
     return gerar_html(proventos,
         "BDRs em destaque com Data Com futura",
-        "/", "Voltar às Ações"
+        "/", "Voltar às Ações",
+        widget
     )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
