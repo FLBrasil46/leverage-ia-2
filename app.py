@@ -25,6 +25,40 @@ def extrair_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
 
+def carregar_proventos(nome_arquivo):
+    proventos = []
+    hoje = datetime.now().date()
+    try:
+        with open(nome_arquivo, "r", encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        print("Arquivo não encontrado:", nome_arquivo)
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    tabela = soup.find("table")
+    if not tabela:
+        print("Tabela não encontrada no HTML.")
+        return []
+    for row in tabela.find_all("tr")[1:]:
+        cols = row.find_all("td")
+        if len(cols) >= 5:
+            ticker = extrair_span(cols[0])
+            data_com_str = extrair_span(cols[1])
+            pagamento_str = extrair_span(cols[2])
+            tipo = extrair_span(cols[3])
+            valor = parse_valor(extrair_span(cols[4]))
+            data_com = parse_data(data_com_str)
+            if data_com and data_com.date() > hoje:
+                proventos.append({
+                    "ticker": ticker,
+                    "data_com": data_com_str,
+                    "pagamento": pagamento_str,
+                    "tipo": tipo,
+                    "valor": f"R$ {valor:.2f}",
+                    "valor_num": valor
+                })
+    return sorted(proventos, key=lambda x: -x["valor_num"])
+
 def carregar_fiis(nome_arquivo):
     fiis = []
     hoje = datetime.now().date()
@@ -32,16 +66,21 @@ def carregar_fiis(nome_arquivo):
         with open(nome_arquivo, "r", encoding="utf-8") as f:
             html = f.read()
     except FileNotFoundError:
+        print("Arquivo FIIs não encontrado:", nome_arquivo)
         return []
 
     soup = BeautifulSoup(html, "html.parser")
     tabela = soup.find("table")
     if not tabela:
+        print("Tabela de FIIs não encontrada.")
         return []
 
-    for row in tabela.find_all("tr")[1:]:
-        cols = row.find_all("td")
-        if len(cols) >= 4:
+    for i, row in enumerate(tabela.find_all("tr")[1:], start=1):
+        try:
+            cols = row.find_all("td")
+            if len(cols) < 4:
+                print(f"[Linha {i}] Menos de 4 colunas: {len(cols)}")
+                continue
             ticker = extrair_span(cols[0])
             pagamento_str = extrair_span(cols[1])
             tipo = extrair_span(cols[2])
@@ -55,34 +94,73 @@ def carregar_fiis(nome_arquivo):
                     "valor": f"R$ {valor:.2f}",
                     "valor_num": valor
                 })
-
+        except Exception as e:
+            print(f"[Linha {i}] Erro ao processar: {e}")
     return sorted(fiis, key=lambda x: -x["valor_num"])
 
-def gerar_html_simples(lista, titulo, colunas, rota_oposta=None, texto_botao=None):
-    if not lista:
+def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoes"):
+    if not proventos:
         corpo = "<div class='alert alert-warning'>Não existem opções no momento!</div>"
     else:
         linhas = ""
-        for i, item in enumerate(lista):
+        for i, p in enumerate(proventos):
             destaque = "table-success fw-semibold" if i < 5 else ""
             selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-            linhas += f"<tr class='{destaque}'>"
-            for campo in colunas:
-                valor = item.get(campo, "")
-                if campo == "ticker":
-                    valor += selo
-                linhas += f"<td>{valor}</td>"
-            linhas += "</tr>"
-
-        thead = "".join(f"<th>{c.title()}</th>" for c in colunas)
+            if tipo == "acoes":
+                linhas += (
+                    f"<tr class='{destaque}'>"
+                    f"<td>{p['ticker']}{selo}</td>"
+                    f"<td>{p['data_com']}</td>"
+                    f"<td>{p['pagamento']}</td>"
+                    f"<td>{p['tipo']}</td>"
+                    f"<td>{p['valor']}</td></tr>"
+                )
+            else:
+                linhas += (
+                    f"<tr class='{destaque}'>"
+                    f"<td>{p['ticker']}{selo}</td>"
+                    f"<td>{p['pagamento']}</td>"
+                    f"<td>{p['tipo']}</td>"
+                    f"<td>{p['valor']}</td></tr>"
+                )
+        colunas = (
+            "<th>Ticker</th><th>Pagamento</th><th>Tipo</th><th>Valor</th>"
+            if tipo != "acoes"
+            else "<th>Ticker</th><th>Data Com</th><th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
+        )
         corpo = (
             "<div class='table-responsive'>"
             "<table class='table table-bordered table-hover'>"
-            f"<thead class='table-primary text-center'><tr>{thead}</tr></thead>"
-            f"<tbody>{linhas}</tbody></table></div>"
+            f"<thead class='table-primary text-center'><tr>{colunas}</tr></thead>"
+            f"<tbody>{linhas}</tbody>"
+            "</table></div>"
         )
 
-    botao = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>" if rota_oposta else ""
+    botao = ""
+    if rota_oposta and texto_botao:
+        botao = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>"
+
+    # Ticker Tape
+    ticker_tape = """
+    <div class="tradingview-widget-container mb-4">
+      <div id="tradingview_12345"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+      {
+        "symbols": [
+          {"proName": "BMF/BVSP","title": "Bovespa"},
+          {"proName": "BMFBOVESPA:USDBRL","title": "USDBRL"},
+          {"proName": "NASDAQ:TSLA","title": "TSLA"},
+          {"proName": "NYSE:IBM","title": "IBM"}
+        ],
+        "showSymbolLogo": true,
+        "colorTheme": "light",
+        "isTransparent": false,
+        "displayMode": "adaptive",
+        "locale": "pt"
+      }
+      </script>
+    </div>
+    """
 
     return f"""
     <!DOCTYPE html>
@@ -92,9 +170,10 @@ def gerar_html_simples(lista, titulo, colunas, rota_oposta=None, texto_botao=Non
       <title>{titulo}</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
-    <body class="container py-4">
-      <h1 class='text-center text-primary mb-4'>LEVERAGE IA</h1>
-      <p class='text-center text-muted'>{titulo}</p>
+    <body class="container py-3">
+      {ticker_tape}
+      <h1 class='text-center mb-4 text-primary'>LEVERAGE IA</h1>
+      <p class='text-center text-muted mb-3'>{titulo}</p>
       <div class="text-center">{botao}</div>
       {corpo}
     </body>
@@ -103,33 +182,28 @@ def gerar_html_simples(lista, titulo, colunas, rota_oposta=None, texto_botao=Non
 
 @app.route("/")
 def index():
-    from_arquivo = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html_simples(
-        from_arquivo,
+    proventos = carregar_proventos("investidor10_dividendos.txt")
+    return gerar_html(proventos,
         "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        ["ticker", "data_com", "pagamento", "tipo", "valor"],
         "/bdrs", "Ver BDRs"
     )
 
 @app.route("/bdrs")
 def bdrs():
-    from_arquivo = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html_simples(
-        from_arquivo,
+    proventos = carregar_proventos("investidor10_bdrs.txt")
+    return gerar_html(proventos,
         "BDRs em destaque com Data Com futura",
-        ["ticker", "data_com", "pagamento", "tipo", "valor"],
         "/", "Voltar às Ações"
     )
 
 @app.route("/fiis")
 def fiis():
-    fiis_data = carregar_fiis("melhoresfiis.txt")
-    return gerar_html_simples(
-        fiis_data,
-        "Fundos Imobiliários com pagamentos futuros",
-        ["ticker", "pagamento", "tipo", "valor"],
-        "/", "Voltar às Ações"
+    proventos = carregar_fiis("melhoresfiis.txt")
+    return gerar_html(proventos,
+        "FIIs com maiores rendimentos futuros",
+        "/", "Voltar às Ações",
+        tipo="fiis"
     )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
