@@ -36,7 +36,6 @@ def carregar_proventos(nome_arquivo):
 
     soup = BeautifulSoup(html, "html.parser")
     tabela = soup.find("table")
-
     if not tabela:
         return []
 
@@ -62,7 +61,8 @@ def carregar_proventos(nome_arquivo):
                     "valor_num": valor
                 })
 
-    return sorted(proventos, key=lambda x: -x["valor_num"])
+    proventos = sorted(proventos, key=lambda x: -x["valor_num"])
+    return proventos
 
 def carregar_fiis(nome_arquivo):
     fiis = []
@@ -75,7 +75,6 @@ def carregar_fiis(nome_arquivo):
 
     soup = BeautifulSoup(html, "html.parser")
     tabela = soup.find("table")
-
     if not tabela:
         return []
 
@@ -90,16 +89,19 @@ def carregar_fiis(nome_arquivo):
             pagamento = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
 
-            if pagamento and pagamento.date() > hoje:
+            if pagamento and pagamento.date() >= hoje:
                 fiis.append({
                     "ticker": ticker,
                     "pagamento": pagamento_str,
+                    "pagamento_data": pagamento.date(),
                     "tipo": tipo,
                     "valor": f"R$ {valor:.2f}",
                     "valor_num": valor
                 })
 
-    return sorted(fiis, key=lambda x: -x["valor_num"])
+    # Ordenar por data de pagamento (mais próxima), depois por valor decrescente
+    fiis = sorted(fiis, key=lambda x: (x["pagamento_data"], -x["valor_num"]))
+    return fiis
 
 def gerar_widget_header():
     return """
@@ -123,61 +125,41 @@ def gerar_widget_header():
     </div>
     """
 
-def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoes"):
+def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None):
     widget_header = gerar_widget_header()
 
     if not proventos:
-        corpo_tabela = """
-        <div class='alert alert-warning text-center'>
-            Não existem opções no momento!
-        </div>"""
+        corpo = "<div class='alert alert-warning text-center'>Não existem opções no momento!</div>"
     else:
         linhas = ""
-        for i, p in enumerate(proventos):
+        for i, p in enumerate(proventos[:20]):
             destaque = "table-success fw-semibold" if i < 5 else ""
             selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-            if tipo == "acoes":
-                linhas += f"""
-                <tr class='{destaque}'>
-                    <td>{p['ticker']}{selo}</td>
-                    <td>{p['data_com']}</td>
-                    <td>{p['pagamento']}</td>
-                    <td>{p['tipo']}</td>
-                    <td>{p['valor']}</td>
-                </tr>"""
-            else:  # FIIs
-                linhas += f"""
-                <tr class='{destaque}'>
-                    <td>{p['ticker']}{selo}</td>
-                    <td>{p['pagamento']}</td>
-                    <td>{p['tipo']}</td>
-                    <td>{p['valor']}</td>
-                </tr>"""
+            linhas += "<tr class='{}'>".format(destaque)
+            linhas += f"<td>{p['ticker']}{selo}</td>"
+            if "data_com" in p:
+                linhas += f"<td>{p['data_com']}</td>"
+            linhas += f"<td>{p['pagamento']}</td><td>{p['tipo']}</td><td>{p['valor']}</td></tr>"
 
-        headers = (
-            "<th>Ticker</th><th>Data Com</th><th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
-            if tipo == "acoes"
-            else "<th>Ticker</th><th>Pagamento</th><th>Tipo</th><th>Valor</th>"
-        )
+        cabecalho = "<th>Ticker</th>"
+        if "data_com" in proventos[0]:
+            cabecalho += "<th>Data Com</th>"
+        cabecalho += "<th>Data Pgto</th><th>Tipo</th><th>Valor</th>"
 
-        corpo_tabela = f"""
+        corpo = f"""
         <div class="table-responsive">
             <table class="table table-bordered table-hover shadow-sm rounded">
                 <thead class="table-primary text-center">
-                    <tr>{headers}</tr>
+                    <tr>{cabecalho}</tr>
                 </thead>
                 <tbody>{linhas}</tbody>
             </table>
         </div>
         """
 
-    botoes = ""
+    botao_extra = ""
     if rota_oposta and texto_botao:
-        botoes += f"""<a href="{rota_oposta}" class="btn btn-outline-primary mb-3 me-2">{texto_botao}</a>"""
-
-    if tipo == "acoes":
-        botoes += """
-        <a href="/fiis" class="btn btn-outline-success mb-3 me-2">Ver FIIs</a>"""
+        botao_extra = f"<a href='{rota_oposta}' class='btn btn-outline-primary mb-3'>{texto_botao}</a>"
 
     return f"""
     <!DOCTYPE html>
@@ -192,8 +174,8 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoe
         <div class="container py-4">
             <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
             <p class="text-center text-muted">{titulo}</p>
-            <div class="text-center">{botoes}</div>
-            {corpo_tabela}
+            <div class="text-center">{botao_extra}</div>
+            {corpo}
         </div>
     </body>
     </html>
@@ -202,32 +184,25 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoe
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html(
-        proventos,
+    return gerar_html(proventos,
         "Melhores oportunidades do mercado brasileiro com Data Com futura",
-        "/bdrs",
-        "Ver BDRs"
+        "/bdrs", "Ver BDRs"
     )
 
 @app.route("/bdrs")
 def bdrs():
     proventos = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html(
-        proventos,
+    return gerar_html(proventos,
         "BDRs em destaque com Data Com futura",
-        "/",
-        "Voltar às Ações"
+        "/", "Voltar às Ações"
     )
 
 @app.route("/fiis")
 def fiis():
-    fiis = carregar_fiis("melhoresfiis.txt")
-    return gerar_html(
-        fiis,
-        "FIIs com maiores pagamentos futuros",
-        "/",
-        "Voltar às Ações",
-        tipo="fiis"
+    proventos = carregar_fiis("melhoresfiis.txt")
+    return gerar_html(proventos,
+        "FIIs com os maiores rendimentos próximos",
+        "/", "Voltar às Ações"
     )
 
 if __name__ == "__main__":
