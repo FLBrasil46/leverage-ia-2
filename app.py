@@ -1,10 +1,8 @@
-from flask import Flask, render_template_string, request
+from flask import Flask
 from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 import re
-import requests
-import investpy
 
 app = Flask(__name__)
 
@@ -27,7 +25,7 @@ def extrair_span(td):
     span = td.find("span", class_="table-field")
     return span.text.strip() if span else td.text.strip()
 
-def carregar_proventos(nome_arquivo, tipo="acoes"):
+def carregar_proventos(nome_arquivo):
     proventos = []
     hoje = datetime.now().date()
 
@@ -49,36 +47,62 @@ def carregar_proventos(nome_arquivo, tipo="acoes"):
             ticker = extrair_span(cols[0])
             data_com_str = extrair_span(cols[1])
             pagamento_str = extrair_span(cols[2])
-            tipo_provento = extrair_span(cols[3])
+            tipo = extrair_span(cols[3])
             valor_str = extrair_span(cols[4])
 
             data_com = parse_data(data_com_str)
-            data_pgto = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
 
-            incluir = False
-            if tipo == "acoes" and data_com and data_com.date() > hoje:
-                incluir = True
-            elif tipo == "fiis" and data_pgto and data_pgto.date() >= hoje:
-                incluir = True
-
-            if incluir:
+            if data_com and data_com.date() > hoje:
                 proventos.append({
                     "ticker": ticker,
                     "data_com": data_com_str,
                     "pagamento": pagamento_str,
-                    "tipo": tipo_provento,
+                    "tipo": tipo,
                     "valor": f"R$ {valor:.2f}",
-                    "valor_num": valor,
-                    "data_pgto_obj": data_pgto
+                    "valor_num": valor
                 })
 
-    if tipo == "fiis":
-        proventos.sort(key=lambda x: (x["data_pgto_obj"], -x["valor_num"]))
-    else:
-        proventos.sort(key=lambda x: -x["valor_num"])
+    return sorted(proventos, key=lambda x: -x["valor_num"])
 
-    return proventos
+def carregar_fiis(nome_arquivo):
+    fiis = []
+    hoje = datetime.now().date()
+
+    try:
+        with open(nome_arquivo, "r", encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    tabela = soup.find("table")
+
+    if not tabela:
+        return []
+
+    for row in tabela.find_all("tr")[1:]:
+        cols = row.find_all("td")
+        if len(cols) >= 5:
+            ticker = extrair_span(cols[0])
+            pagamento_str = extrair_span(cols[2])
+            tipo = extrair_span(cols[3])
+            valor_str = extrair_span(cols[4])
+
+            data_pgto = parse_data(pagamento_str)
+            valor = parse_valor(valor_str)
+
+            if data_pgto and data_pgto.date() >= hoje:
+                fiis.append({
+                    "ticker": ticker,
+                    "data_pgto": pagamento_str,
+                    "tipo": tipo,
+                    "valor": f"R$ {valor:.2f}",
+                    "valor_num": valor,
+                    "data_pgto_val": data_pgto
+                })
+
+    return sorted(fiis, key=lambda x: (x["data_pgto_val"], -x["valor_num"]))
 
 def gerar_widget_header():
     return """
@@ -102,50 +126,62 @@ def gerar_widget_header():
     </div>
     """
 
-def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, rota_extra=None, texto_extra=None):
+def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoes"):
     widget_header = gerar_widget_header()
 
-    corpo_tabela = ""
-    for i, p in enumerate(proventos):
-        destaque = "table-success fw-semibold" if i < 5 else ""
-        selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
-        corpo_tabela += f"""
-        <tr class='{destaque}'>
-            <td>{p['ticker']}{selo}</td>
-            <td>{p['data_com']}</td>
-            <td>{p['pagamento']}</td>
-            <td>{p['tipo']}</td>
-            <td>{p['valor']}</td>
-        </tr>"""
+    if not proventos:
+        corpo = "<div class='alert alert-warning text-center'>Não existem opções no momento!</div>"
+    else:
+        linhas = ""
+        for i, p in enumerate(proventos):
+            destaque = "table-success fw-semibold" if i < 5 else ""
+            selo = "<span class='badge bg-success ms-2'>TOP 5</span>" if i < 5 else ""
 
-    tabela_html = f"""
-    <div class="table-responsive">
-        <table class="table table-bordered table-hover shadow-sm rounded">
-            <thead class="table-primary text-center">
+            if tipo == "fiis":
+                linhas += f"""
+                <tr class='{destaque}'>
+                    <td>{p['ticker']}{selo}</td>
+                    <td>{p['data_pgto']}</td>
+                    <td>{p['tipo']}</td>
+                    <td>{p['valor']}</td>
+                </tr>"""
+            else:
+                linhas += f"""
+                <tr class='{destaque}'>
+                    <td>{p['ticker']}{selo}</td>
+                    <td>{p['data_com']}</td>
+                    <td>{p['pagamento']}</td>
+                    <td>{p['tipo']}</td>
+                    <td>{p['valor']}</td>
+                </tr>"""
+
+        if tipo == "fiis":
+            cabecalho = """
+                <tr>
+                    <th>Ticker</th>
+                    <th>Data Pgto</th>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                </tr>"""
+        else:
+            cabecalho = """
                 <tr>
                     <th>Ticker</th>
                     <th>Data Com</th>
                     <th>Data Pgto</th>
                     <th>Tipo</th>
                     <th>Valor</th>
-                </tr>
-            </thead>
-            <tbody>{corpo_tabela}</tbody>
-        </table>
-    </div>
-    """ if proventos else "<div class='alert alert-warning text-center'>Não existem opções no momento!</div>"
+                </tr>"""
 
-    botoes = ""
-    if rota_oposta:
-        botoes += f"<a href='{rota_oposta}' class='btn btn-outline-primary me-2 mb-2'>{texto_botao}</a>"
-    if rota_extra:
-        botoes += f"<a href='{rota_extra}' class='btn btn-outline-dark mb-2'>{texto_extra}</a>"
+        corpo = f"""
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover shadow-sm rounded">
+                <thead class="table-primary text-center">{cabecalho}</thead>
+                <tbody>{linhas}</tbody>
+            </table>
+        </div>"""
 
-    iframe = """
-    <div class="mt-5">
-        <iframe src="/preco-alvo" width="100%" height="500" style="border:1px solid #ccc;"></iframe>
-    </div>
-    """ if not rota_oposta else ""
+    botao_extra = f"<a href='{rota_oposta}' class='btn btn-outline-secondary mb-3'>{texto_botao}</a>" if rota_oposta and texto_botao else ""
 
     return f"""
     <!DOCTYPE html>
@@ -160,86 +196,50 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, rota_extra
         <div class="container py-4">
             <h1 class="text-center mb-4 text-primary">LEVERAGE IA</h1>
             <p class="text-center text-muted">{titulo}</p>
-            <div class="text-center">{botoes}</div>
-            {tabela_html}
-            {iframe}
+            <div class="text-center">{botao_extra}</div>
+            {corpo}
         </div>
     </body>
     </html>
     """
 
-def preco_alvo_genial(ticker):
-    try:
-        url = f"https://analisa.genialinvestimentos.com.br/acoes/{ticker.lower()}/"
-        resp = requests.get(url, timeout=5)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        el = soup.find("div", text=re.compile(r"Objetivo Final", re.I))
-        if el:
-            val = el.find_next_sibling("div").get_text(strip=True)
-            val = float(val.replace("R$", "").replace(".", "").replace(",", "."))
-            return {"fonte": "Genial Analisa", "preco_alvo": val, "data": datetime.today().strftime("%d/%m/%Y")}
-    except:
-        pass
-    return None
-
-def preco_alvo_investing(ticker):
-    try:
-        data = investpy.get_stock_analyst_rating(stock=ticker, country='brazil')
-        if 'Target Price' in data:
-            tp = float(data['Target Price'])
-            return {"fonte": "Investing.com", "preco_alvo": tp, "data": datetime.today().strftime("%d/%m/%Y")}
-    except:
-        pass
-    return None
-
-def obter_preco_alvo(ticker):
-    resultados = []
-    for fn in (preco_alvo_genial, preco_alvo_investing):
-        dado = fn(ticker)
-        if dado:
-            resultados.append(dado)
-    return resultados
-
-def calcular_media(valores):
-    if not valores:
-        return 0.0
-    return round(sum(v["preco_alvo"] for v in valores) / len(valores), 2)
-
-TEMPLATE_PRECO = """
-<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><title>Preço-Alvo</title>
-<style>table{border:1px solid #ccc;width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ccc}</style>
-</head><body>
-<h2>Consulta de Preço-Alvo</h2>
-<form><input name="ticker" placeholder="Ticker" value="{{ ticker }}"><button>Buscar</button></form>
-{% if resultados %}
-<table><tr><th>Fonte</th><th>Preço-Alvo (R$)</th><th>Data</th></tr>
-{% for r in resultados %}<tr><td>{{r.fonte}}</td><td>R$ {{'%.2f'|format(r.preco_alvo)}}</td><td>{{r.data}}</td></tr>{% endfor %}
-<tr><td colspan="3"><strong>Média: R$ {{'%.2f'|format(media)}}</strong></td></tr></table>
-{% elif ticker %}<p><em>Nenhum dado encontrado para {{ticker}}</em></p>{% endif %}
-</body></html>
-"""
-
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
-    return gerar_html(proventos, "Melhores oportunidades com Data Com futura", "/bdrs", "Ver BDRs", "/fiis", "Ver FIIs")
+
+    botoes = """
+    <div class="d-flex flex-wrap justify-content-center gap-3 mb-4">
+        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">
+            BDRs
+        </a>
+        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">
+            FIIs
+        </a>
+    </div>"""
+
+    html = gerar_html(proventos,
+        "Melhores oportunidades do mercado brasileiro com Data Com futura"
+    )
+    return html.replace('<div class="text-center"></div>', botoes)
 
 @app.route("/bdrs")
 def bdrs():
     proventos = carregar_proventos("investidor10_bdrs.txt")
-    return gerar_html(proventos, "BDRs em destaque com Data Com futura", "/", "Voltar às Ações")
+    return gerar_html(
+        proventos,
+        "BDRs em destaque com Data Com futura",
+        "/", "Voltar às Ações"
+    )
 
 @app.route("/fiis")
 def fiis():
-    proventos = carregar_proventos("melhoresfiis.txt", tipo="fiis")
-    return gerar_html(proventos, "FIIs com pagamento futuro mais próximos", "/", "Voltar às Ações")
-
-@app.route("/preco-alvo")
-def preco_alvo():
-    ticker = request.args.get("ticker", "").strip().upper()
-    resultados = obter_preco_alvo(ticker) if ticker else []
-    media = calcular_media(resultados)
-    return render_template_string(TEMPLATE_PRECO, ticker=ticker, resultados=resultados, media=media)
+    fiis_data = carregar_fiis("melhoresfiis.txt")
+    return gerar_html(
+        fiis_data,
+        "FIIs com pagamentos mais próximos e maior valor",
+        "/", "Voltar às Ações",
+        tipo="fiis"
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
