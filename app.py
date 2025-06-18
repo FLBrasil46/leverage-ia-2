@@ -51,19 +51,23 @@ def carregar_proventos(nome_arquivo):
             valor_str = extrair_span(cols[4])
 
             data_com = parse_data(data_com_str)
+            data_pgto = parse_data(pagamento_str)
             valor = parse_valor(valor_str)
 
-            if data_com and data_com.date() > hoje:
+            if data_com and data_pgto and data_com.date() > hoje:
+                dias_entre = (data_pgto.date() - data_com.date()).days if data_pgto.date() >= data_com.date() else 9999
                 proventos.append({
                     "ticker": ticker,
                     "data_com": data_com_str,
                     "pagamento": pagamento_str,
                     "tipo": tipo,
                     "valor": f"R$ {valor:.2f}",
-                    "valor_num": valor
+                    "valor_num": valor,
+                    "data_com_val": data_com.date(),
+                    "dias_entre": dias_entre
                 })
 
-    return sorted(proventos, key=lambda x: -x["valor_num"])
+    return sorted(proventos, key=lambda x: (x["data_com_val"], x["dias_entre"], -x["valor_num"]))
 
 def carregar_fiis(nome_arquivo):
     fiis = []
@@ -155,23 +159,20 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoe
                     <td>{p['valor']}</td>
                 </tr>"""
 
-        if tipo == "fiis":
-            cabecalho = """
-                <tr>
-                    <th>Ticker</th>
-                    <th>Data Pgto</th>
-                    <th>Tipo</th>
-                    <th>Valor</th>
-                </tr>"""
-        else:
-            cabecalho = """
-                <tr>
-                    <th>Ticker</th>
-                    <th>Data Com</th>
-                    <th>Data Pgto</th>
-                    <th>Tipo</th>
-                    <th>Valor</th>
-                </tr>"""
+        cabecalho = """
+            <tr>
+                <th>Ticker</th>
+                <th>Data Com</th>
+                <th>Data Pgto</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+            </tr>""" if tipo != "fiis" else """
+            <tr>
+                <th>Ticker</th>
+                <th>Data Pgto</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+            </tr>"""
 
         corpo = f"""
         <div class="table-responsive">
@@ -208,25 +209,15 @@ def gerar_html(proventos, titulo, rota_oposta=None, texto_botao=None, tipo="acoe
 @app.route("/")
 def index():
     proventos = carregar_proventos("investidor10_dividendos.txt")
-
     botoes = """
     <div class="d-flex flex-wrap justify-content-center gap-3 mb-4">
-        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">
-            BDRs
-        </a>
-        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">
-            FIIs
-        </a>
+        <a href="/bdrs" class="btn btn-outline-primary d-flex align-items-center px-4 py-2 shadow-sm">BDRs</a>
+        <a href="/fiis" class="btn btn-outline-success d-flex align-items-center px-4 py-2 shadow-sm">FIIs</a>
         <a href="https://ed07cb4f-2763-4d84-bf4f-4c5ab86a7717-00-rsaumcmltcrm.worf.replit.dev/" 
            target="_blank" 
-           class="btn btn-outline-dark d-flex align-items-center px-4 py-2 shadow-sm">
-            Ver Preço-Alvo
-        </a>
+           class="btn btn-outline-dark d-flex align-items-center px-4 py-2 shadow-sm">Ver Preço-Alvo</a>
     </div>"""
-
-    html = gerar_html(proventos,
-        "Melhores oportunidades do mercado brasileiro com Data Com futura"
-    )
+    html = gerar_html(proventos, "Melhores oportunidades do mercado brasileiro com Data Com futura")
     return html.replace('<div class="text-center"></div>', botoes)
 
 @app.route("/bdrs")
@@ -251,4 +242,3 @@ def fiis():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
